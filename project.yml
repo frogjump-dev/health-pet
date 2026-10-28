@@ -9,6 +9,9 @@ options:
 packages:
   PetCore:
     path: Packages/PetCore
+  Supabase:
+    url: https://github.com/supabase/supabase-swift
+    from: 2.0.0
 
 targets:
   HealthPet:
@@ -16,8 +19,13 @@ targets:
     platform: iOS
     sources:
       - path: HealthPet
+    configFiles:
+      Debug: Config/Base.xcconfig
+      Release: Config/Base.xcconfig
     dependencies:
       - package: PetCore
+      - package: Supabase
+        product: Supabase
       - sdk: HealthKit.framework
     info:
       path: HealthPet/Resources/Info.plist
@@ -29,6 +37,11 @@ targets:
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
         NSHealthShareUsageDescription: "Your pet reads your sleep, heart rate variability, resting heart rate and steps so it can feel how you feel. Data stays on your phone."
         NSHealthUpdateUsageDescription: "HealthPet does not write to Apple Health."
+        SupabaseProjectRef: $(SUPABASE_PROJECT_REF)
+        SupabaseAnonKey: $(SUPABASE_ANON_KEY)
+        CFBundleURLTypes:
+          - CFBundleURLName: com.healthpet.app
+            CFBundleURLSchemes: [healthpet]
     entitlements:
       path: HealthPet/Resources/HealthPet.entitlements
       properties:

@@ -2,181 +2,201 @@ import Foundation
 import Observation
 import PetCore
 
-enum DataSourceChoice: String, CaseIterable, Identifiable {
-    case appleHealth, whoop, demo
+/// Live = the phone's Apple Health data plus Whoop (when linked), merged per day.
+/// Demo = generated data, for the simulator and previews.
+enum DataMode: String, CaseIterable, Identifiable {
+    case live, demo
     var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .appleHealth: "Apple Health"
-        case .whoop: "Whoop"
-        case .demo: "Demo data"
-        }
-    }
 }
 
-/// App-wide state: picks a data source, refreshes, and turns data into the pet's state.
+enum WhoopStatus: Equatable {
+    case unavailable   // this build has no backend configured
+    case notConnected
+    case connected
+}
+
+/// App-wide state: gathers health data from every source, turns it into the pet's state,
+/// and exposes the pet store to the views.
 @MainActor
 @Observable
 final class AppModel {
     private(set) var petState: PetState = .neutral
     private(set) var today: HealthSnapshot?
-    private(set) var memories: [MemoryEvent] = []
     private(set) var isLoading = false
-    private(set) var bond = Bond()
-    private(set) var lastTreatDay: Date?
-    private(set) var patsToday = 0
+    private(set) var whoopStatus: WhoopStatus
+    /// HealthKit never reveals whether read access was granted, so this only records that
+    /// the user went through the permission sheet.
+    private(set) var appleHealthConnected: Bool
     /// Bumped on every pat or treat so the pet view can play a reaction.
     private(set) var reactionCount = 0
     var errorMessage: String?
 
-    var sourceChoice: DataSourceChoice {
-        didSet { defaults.set(sourceChoice.rawValue, forKey: Keys.source) }
+    var dataMode: DataMode {
+        didSet { defaults.set(dataMode.rawValue, forKey: Keys.dataMode) }
     }
     var demoScenario: PetMood = .golden
     var skin: any CharacterSkin = CharacterCatalog.defaultSkin
     var sleepSchedule = SleepSchedule()
 
-    /// The day the user got their pet; anniversaries count from here.
-    let adoptedOn: Date
+    let store: PetStore
 
     private let engine = PetStateEngine()
     private let memoryDetector = MemoryDetector()
+    private let healthKit = HealthKitProvider()
+    private let whoop: WhoopProvider
+    private let whoopConnector = WhoopConnector()
+    private let backend: Backend?
     private let defaults: UserDefaults
 
     private enum Keys {
-        static let source = "dataSource"
-        static let adoptedOn = "adoptedOn"
-        static let memories = "memories"
-        static let bondPoints = "bondPoints"
-        static let lastTreatDay = "lastTreatDay"
-        static let pats = "pats"
+        static let dataMode = "dataMode"
+        static let whoopConnected = "whoopConnected"
+        static let appleHealthConnected = "appleHealthConnected"
     }
 
-    static let pointsPerPat = 1
-    static let maxPatPointsPerDay = 10
-    static let pointsPerTreat = 10
-
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = .standard, backend: Backend? = Backend.shared) {
         self.defaults = defaults
+        self.backend = backend
+        store = PetStore(defaults: defaults)
+        whoop = WhoopProvider(backend: backend)
 
         #if targetEnvironment(simulator)
-        let fallback = DataSourceChoice.demo
+        let fallback = DataMode.demo
         #else
-        let fallback = DataSourceChoice.appleHealth
+        let fallback = DataMode.live
         #endif
-        sourceChoice = defaults.string(forKey: Keys.source).flatMap(DataSourceChoice.init) ?? fallback
+        dataMode = defaults.string(forKey: Keys.dataMode).flatMap(DataMode.init) ?? fallback
+        appleHealthConnected = defaults.bool(forKey: Keys.appleHealthConnected)
 
-        if let saved = defaults.object(forKey: Keys.adoptedOn) as? Date {
-            adoptedOn = saved
+        if backend == nil {
+            whoopStatus = .unavailable
         } else {
-            adoptedOn = Date()
-            defaults.set(adoptedOn, forKey: Keys.adoptedOn)
+            whoopStatus = defaults.bool(forKey: Keys.whoopConnected) ? .connected : .notConnected
         }
 
-        if let data = defaults.data(forKey: Keys.memories),
-           let saved = try? JSONDecoder().decode([MemoryEvent].self, from: data) {
-            memories = saved
-        }
-
-        bond = Bond(points: defaults.integer(forKey: Keys.bondPoints))
-        lastTreatDay = defaults.object(forKey: Keys.lastTreatDay) as? Date
-        if let pats = defaults.dictionary(forKey: Keys.pats) as? [String: Int] {
-            patsToday = pats[Self.dayKey(Date())] ?? 0
-        }
+        // Show yesterday's pet straight away; refresh() replaces it with fresh data.
+        evaluate(store.cachedSnapshots, now: Date(), recordMemories: false)
     }
 
-    // MARK: - Bond
+    // MARK: - Pet interactions (forwarded so views only talk to the model)
 
-    var daysTogether: Int {
-        let calendar = Calendar.current
-        let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: adoptedOn), to: calendar.startOfDay(for: Date())).day ?? 0
-        return days + 1
-    }
+    var bond: Bond { store.bond }
+    var memories: [MemoryEvent] { store.memories }
+    var daysTogether: Int { store.daysTogether }
+    var canClaimTreat: Bool { store.canClaimTreat }
 
-    var canClaimTreat: Bool {
-        guard let last = lastTreatDay else { return true }
-        return !Calendar.current.isDateInToday(last)
-    }
-
-    /// Patting always gets a reaction; only the first few pats a day add bond points.
     func pat() {
         reactionCount += 1
-        let today = Self.dayKey(Date())
-        patsToday = (defaults.dictionary(forKey: Keys.pats) as? [String: Int])?[today] ?? 0
-        guard patsToday < Self.maxPatPointsPerDay else { return }
-        patsToday += 1
-        defaults.set([today: patsToday], forKey: Keys.pats)
-        addBond(Self.pointsPerPat)
+        store.recordPat()
     }
 
-    /// The daily treat: opening the app and checking on the pet is the reward loop.
     func claimTreat() {
-        guard canClaimTreat else { return }
-        lastTreatDay = Date()
-        defaults.set(lastTreatDay, forKey: Keys.lastTreatDay)
-        reactionCount += 1
-        addBond(Self.pointsPerTreat)
+        if store.claimTreat() { reactionCount += 1 }
     }
 
-    private func addBond(_ amount: Int) {
-        bond.add(amount)
-        defaults.set(bond.points, forKey: Keys.bondPoints)
-    }
+    // MARK: - Sources
 
-    private static func dayKey(_ date: Date) -> String {
-        let c = Calendar.current.dateComponents([.year, .month, .day], from: date)
-        return "\(c.year ?? 0)-\(c.month ?? 0)-\(c.day ?? 0)"
-    }
-
-    private var provider: any HealthDataProvider {
-        switch sourceChoice {
-        case .appleHealth: return HealthKitProvider()
-        case .whoop: return WhoopProvider(backendBaseURL: nil)
-        case .demo: return DemoHealthProvider(scenario: demoScenario)
-        }
-    }
-
-    func connect() async {
+    func connectAppleHealth() async {
         do {
-            try await provider.requestAuthorization()
+            try await healthKit.requestAuthorization()
+            appleHealthConnected = true
+            defaults.set(true, forKey: Keys.appleHealthConnected)
             await refresh()
         } catch {
             errorMessage = error.localizedDescription
         }
     }
 
-    /// Pulls the last 30 days and re-evaluates the pet. Called on launch and when the app comes to the foreground.
-    func refresh(now: Date = Date()) async {
-        isLoading = true
-        defer { isLoading = false }
-
+    func connectWhoop() async {
+        guard let backend else { return }
         do {
-            let start = Calendar.current.date(byAdding: .day, value: -PersonalBaseline.windowDays, to: now)!
-            let snapshots = try await provider.snapshots(from: start, to: now)
-            let todayStart = Calendar.current.startOfDay(for: now)
-            guard let todaySnapshot = snapshots.first(where: { $0.day == todayStart }) else { return }
-            let history = snapshots.filter { $0.day < todayStart }
-
-            today = todaySnapshot
-            var state = engine.evaluate(today: todaySnapshot, history: history)
-            state.isAsleep = sleepSchedule.isBedtime(at: now)
-            petState = state
-
-            let found = memoryDetector.newMemories(today: todaySnapshot, history: history, adoptedOn: adoptedOn, existing: memories)
-            if !found.isEmpty {
-                memories.append(contentsOf: found)
-                saveMemories()
-            }
-            errorMessage = nil
+            try await whoopConnector.connect(backend: backend)
+            setWhoopConnected(true)
+            await refresh()
         } catch {
             errorMessage = error.localizedDescription
         }
     }
 
-    private func saveMemories() {
-        if let data = try? JSONEncoder().encode(memories) {
-            defaults.set(data, forKey: Keys.memories)
+    func disconnectWhoop() async {
+        do {
+            try await whoop.disconnect()
+            setWhoopConnected(false)
+            await refresh()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func setWhoopConnected(_ connected: Bool) {
+        guard backend != nil else { return }
+        whoopStatus = connected ? .connected : .notConnected
+        defaults.set(connected, forKey: Keys.whoopConnected)
+    }
+
+    // MARK: - Refresh
+
+    /// Pulls the last 30 days from every source, merges them per day and re-evaluates the pet.
+    /// Called on launch and whenever the app comes to the foreground.
+    func refresh(now: Date = Date()) async {
+        isLoading = true
+        defer { isLoading = false }
+
+        let start = Calendar.current.date(byAdding: .day, value: -PersonalBaseline.windowDays, to: now)!
+        var collected: [HealthSnapshot] = []
+        var failures: [Error] = []
+
+        switch dataMode {
+        case .demo:
+            collected = (try? await DemoHealthProvider(scenario: demoScenario).snapshots(from: start, to: now)) ?? []
+
+        case .live:
+            let healthKit = healthKit, whoop = whoop
+            // Unconnected sources are skipped rather than reported as errors.
+            let phoneLinked = appleHealthConnected
+            let whoopLinked = whoopStatus == .connected
+            async let phone = phoneLinked ? Self.fetch(healthKit, from: start, to: now) : .success([])
+            async let band = whoopLinked ? Self.fetch(whoop, from: start, to: now) : .success([])
+
+            for result in await [phone, band] {
+                switch result {
+                case .success(let snapshots): collected += snapshots
+                case .failure(WhoopError.notConnected): setWhoopConnected(false)
+                case .failure(let error): failures.append(error)
+                }
+            }
+        }
+
+        let merged = SnapshotMerger.merge(collected)
+        if !merged.isEmpty {
+            if dataMode == .live { store.cache(merged) }
+            evaluate(merged, now: now, recordMemories: true)
+        }
+        // Only complain when nothing worked; a single failing source just falls back to the others.
+        errorMessage = merged.isEmpty ? failures.first?.localizedDescription : nil
+    }
+
+    nonisolated private static func fetch(_ provider: any HealthDataProvider, from start: Date, to end: Date) async -> Result<[HealthSnapshot], Error> {
+        do {
+            return .success(try await provider.snapshots(from: start, to: end))
+        } catch {
+            return .failure(error)
+        }
+    }
+
+    private func evaluate(_ snapshots: [HealthSnapshot], now: Date, recordMemories: Bool) {
+        let todayStart = Calendar.current.startOfDay(for: now)
+        guard let todaySnapshot = snapshots.first(where: { $0.day == todayStart }) else { return }
+        let history = snapshots.filter { $0.day < todayStart }
+
+        today = todaySnapshot
+        var state = engine.evaluate(today: todaySnapshot, history: history)
+        state.isAsleep = sleepSchedule.isBedtime(at: now)
+        petState = state
+
+        if recordMemories {
+            store.addMemories(memoryDetector.newMemories(today: todaySnapshot, history: history,
+                                                         adoptedOn: store.adoptedOn, existing: store.memories))
         }
     }
 }

@@ -1,0 +1,13 @@
+# Only the settings we rely on; the Supabase CLI fills in defaults for the rest.
+project_id = "health-pet"
+
+[auth]
+# Every install signs in anonymously first (see HealthPet/Backend/Backend.swift).
+enable_anonymous_sign_ins = true
+
+# Whoop calls these two directly, without a Supabase user token.
+[functions.whoop-callback]
+verify_jwt = false
+
+[functions.whoop-webhook]
+verify_jwt = false

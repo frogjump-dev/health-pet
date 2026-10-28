@@ -6,6 +6,8 @@ public enum DataSource: String, Codable, Sendable, CaseIterable {
     case healthKit
     case whoop
     case mock
+    /// Merged from several sources by `SnapshotMerger`.
+    case combined
 }
 
 public enum HRVMethod: String, Codable, Sendable {
