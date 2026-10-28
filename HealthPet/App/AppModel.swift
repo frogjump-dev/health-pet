@@ -35,6 +35,14 @@ final class AppModel {
     /// The day the user got their pet; anniversaries count from here.
     let adoptedOn: Date
 
+    /// Warmth earned by caring for the pet; fills the level bar. Never tied to health scores.
+    private(set) var warmth: Int {
+        didSet { defaults.set(warmth, forKey: Keys.warmth) }
+    }
+    private var lastPatDay: Date? {
+        didSet { defaults.set(lastPatDay, forKey: Keys.lastPatDay) }
+    }
+
     private let engine = PetStateEngine()
     private let memoryDetector = MemoryDetector()
     private let defaults: UserDefaults
@@ -43,6 +51,8 @@ final class AppModel {
         static let source = "dataSource"
         static let adoptedOn = "adoptedOn"
         static let memories = "memories"
+        static let warmth = "warmth"
+        static let lastPatDay = "lastPatDay"
     }
 
     init(defaults: UserDefaults = .standard) {
@@ -61,6 +71,9 @@ final class AppModel {
             adoptedOn = Date()
             defaults.set(adoptedOn, forKey: Keys.adoptedOn)
         }
+
+        warmth = defaults.integer(forKey: Keys.warmth)
+        lastPatDay = defaults.object(forKey: Keys.lastPatDay) as? Date
 
         if let data = defaults.data(forKey: Keys.memories),
            let saved = try? JSONDecoder().decode([MemoryEvent].self, from: data) {
@@ -111,6 +124,40 @@ final class AppModel {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    // MARK: Companionship
+
+    /// Day 1 is the adoption day.
+    var daysTogether: Int {
+        let calendar = Calendar.current
+        let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: adoptedOn), to: calendar.startOfDay(for: Date())).day ?? 0
+        return days + 1
+    }
+
+    /// Each level needs a bit more warmth than the last: 100, 150, 200, …
+    var level: (number: Int, current: Int, needed: Int) {
+        var number = 1
+        var remaining = warmth
+        var needed = 100
+        while remaining >= needed {
+            remaining -= needed
+            number += 1
+            needed += 50
+        }
+        return (number, remaining, needed)
+    }
+
+    var canPatToday: Bool {
+        guard let lastPatDay else { return true }
+        return !Calendar.current.isDateInToday(lastPatDay)
+    }
+
+    /// The once-a-day pat on the head.
+    func pat() {
+        guard canPatToday else { return }
+        warmth += 10
+        lastPatDay = Date()
     }
 
     private func saveMemories() {

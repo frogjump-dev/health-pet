@@ -10,6 +10,8 @@ protocol CharacterSkin {
     func makeView(state: PetState) -> AnyView
     /// One short, warm line for the home screen. Never a number.
     func greeting(for state: PetState) -> String
+    /// One or two words for today's mood, e.g. on the home screen's "Today" button.
+    func moodLabel(for state: PetState) -> String
 }
 
 enum CharacterCatalog {

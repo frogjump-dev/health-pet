@@ -21,6 +21,16 @@ struct ToastSkin: CharacterSkin {
         }
     }
 
+    func moodLabel(for state: PetState) -> String {
+        if state.isAsleep { return "Sleeping" }
+        switch state.mood {
+        case .golden: return "Golden"
+        case .burnt:  return "A bit crispy"
+        case .soggy:  return "Soggy"
+        case .fresh:  return "Fresh"
+        }
+    }
+
     static func imageName(for mood: PetMood) -> String {
         "toast_\(mood.rawValue)"
     }
@@ -34,6 +44,10 @@ private struct ToastView: View {
         Image(ToastSkin.imageName(for: state.mood))
             .resizable()
             .scaledToFit()
+            // The art sits on white paper; multiply lets the warm room show through it.
+            .blendMode(.multiply)
+            // Fade the paper's edges so no rectangle shows on tinted backgrounds.
+            .mask { Rectangle().padding(10).blur(radius: 8) }
             .saturation(state.isAsleep ? 0.4 : 1)
             .opacity(state.isAsleep ? 0.75 : 1)
             .offset(y: bob ? -6 : 6)

@@ -18,15 +18,9 @@ struct HealthPetApp: App {
     }
 }
 
+/// The pet's kitchen is the whole app; memories and settings open from its buttons.
 struct RootView: View {
     var body: some View {
-        TabView {
-            HomeView()
-                .tabItem { Label("Pet", systemImage: "house") }
-            MemoriesView()
-                .tabItem { Label("Memories", systemImage: "photo.on.rectangle") }
-            SettingsView()
-                .tabItem { Label("Settings", systemImage: "gearshape") }
-        }
+        HomeView()
     }
 }
