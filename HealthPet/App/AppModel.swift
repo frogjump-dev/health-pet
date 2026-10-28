@@ -23,6 +23,11 @@ final class AppModel {
     private(set) var today: HealthSnapshot?
     private(set) var memories: [MemoryEvent] = []
     private(set) var isLoading = false
+    private(set) var bond = Bond()
+    private(set) var lastTreatDay: Date?
+    private(set) var patsToday = 0
+    /// Bumped on every pat or treat so the pet view can play a reaction.
+    private(set) var reactionCount = 0
     var errorMessage: String?
 
     var sourceChoice: DataSourceChoice {
@@ -43,7 +48,14 @@ final class AppModel {
         static let source = "dataSource"
         static let adoptedOn = "adoptedOn"
         static let memories = "memories"
+        static let bondPoints = "bondPoints"
+        static let lastTreatDay = "lastTreatDay"
+        static let pats = "pats"
     }
+
+    static let pointsPerPat = 1
+    static let maxPatPointsPerDay = 10
+    static let pointsPerTreat = 10
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -66,6 +78,55 @@ final class AppModel {
            let saved = try? JSONDecoder().decode([MemoryEvent].self, from: data) {
             memories = saved
         }
+
+        bond = Bond(points: defaults.integer(forKey: Keys.bondPoints))
+        lastTreatDay = defaults.object(forKey: Keys.lastTreatDay) as? Date
+        if let pats = defaults.dictionary(forKey: Keys.pats) as? [String: Int] {
+            patsToday = pats[Self.dayKey(Date())] ?? 0
+        }
+    }
+
+    // MARK: - Bond
+
+    var daysTogether: Int {
+        let calendar = Calendar.current
+        let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: adoptedOn), to: calendar.startOfDay(for: Date())).day ?? 0
+        return days + 1
+    }
+
+    var canClaimTreat: Bool {
+        guard let last = lastTreatDay else { return true }
+        return !Calendar.current.isDateInToday(last)
+    }
+
+    /// Patting always gets a reaction; only the first few pats a day add bond points.
+    func pat() {
+        reactionCount += 1
+        let today = Self.dayKey(Date())
+        patsToday = (defaults.dictionary(forKey: Keys.pats) as? [String: Int])?[today] ?? 0
+        guard patsToday < Self.maxPatPointsPerDay else { return }
+        patsToday += 1
+        defaults.set([today: patsToday], forKey: Keys.pats)
+        addBond(Self.pointsPerPat)
+    }
+
+    /// The daily treat: opening the app and checking on the pet is the reward loop.
+    func claimTreat() {
+        guard canClaimTreat else { return }
+        lastTreatDay = Date()
+        defaults.set(lastTreatDay, forKey: Keys.lastTreatDay)
+        reactionCount += 1
+        addBond(Self.pointsPerTreat)
+    }
+
+    private func addBond(_ amount: Int) {
+        bond.add(amount)
+        defaults.set(bond.points, forKey: Keys.bondPoints)
+    }
+
+    private static func dayKey(_ date: Date) -> String {
+        let c = Calendar.current.dateComponents([.year, .month, .day], from: date)
+        return "\(c.year ?? 0)-\(c.month ?? 0)-\(c.day ?? 0)"
     }
 
     private var provider: any HealthDataProvider {

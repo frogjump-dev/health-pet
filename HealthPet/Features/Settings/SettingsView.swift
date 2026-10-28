@@ -3,6 +3,7 @@ import PetCore
 
 struct SettingsView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         @Bindable var model = model
@@ -36,6 +37,7 @@ struct SettingsView: View {
                 #endif
             }
             .navigationTitle("Settings")
+            .toolbar { Button("Done") { dismiss() } }
             .onChange(of: model.sourceChoice) { Task { await model.refresh() } }
             .onChange(of: model.demoScenario) { Task { await model.refresh() } }
         }

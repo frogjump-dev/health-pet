@@ -4,6 +4,7 @@ import PetCore
 /// "Shared memories" album: pages are created automatically from data events.
 struct MemoriesView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         NavigationStack {
@@ -26,6 +27,7 @@ struct MemoriesView: View {
                 }
             }
             .navigationTitle("Memories")
+            .toolbar { Button("Done") { dismiss() } }
         }
     }
 }
