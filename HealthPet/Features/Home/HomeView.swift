@@ -19,7 +19,10 @@ struct HomeView: View {
 
                     Spacer(minLength: 8)
 
-                    PetStage(height: min(geo.size.height * 0.46, 420))
+                    SpeechBubble(text: model.skin.greeting(for: model.petState))
+                        .padding(.horizontal, 40)
+
+                    PetStage(height: min(geo.size.height * 0.5, 470))
 
                     BondBar(name: model.skin.displayName, bond: model.bond)
                         .padding(.top, 12)
@@ -102,10 +105,6 @@ private struct PetStage: View {
         }
         .frame(height: height)
         .frame(maxWidth: .infinity)
-        .overlay(alignment: .top) {
-            SpeechBubble(text: model.skin.greeting(for: model.petState))
-                .padding(.horizontal, 40)
-        }
         .overlay(alignment: .topLeading) {
             PatBubble { model.pat() }
                 .padding(.leading, 24)
@@ -172,16 +171,14 @@ private struct PatBubble: View {
                         Image("ic_heart").resizable().scaledToFit().frame(width: 34)
                         Text("+\(AppModel.pointsPerPat)")
                             .font(.system(.caption, design: .rounded).weight(.bold))
-                            .foregroundStyle(.white)
-                            .shadow(color: Palette.ink.opacity(0.3), radius: 1)
+                            .foregroundStyle(Palette.crust)
                     }
                 }
                 .frame(width: 64, height: 64)
 
                 Text("Pat")
                     .font(.system(.caption, design: .rounded).weight(.bold))
-                    .foregroundStyle(.white)
-                    .shadow(color: Palette.ink.opacity(0.35), radius: 2)
+                    .foregroundStyle(Palette.ink.opacity(0.75))
             }
         }
         .buttonStyle(.plain)
@@ -255,8 +252,7 @@ private struct BondBar: View {
                 }
                 Text("\(progress.current) / \(progress.needed)")
                     .font(.system(.caption, design: .rounded).weight(.bold))
-                    .foregroundStyle(.white)
-                    .shadow(color: Palette.ink.opacity(0.4), radius: 1)
+                    .foregroundStyle(Palette.ink.opacity(0.8))
                     .frame(maxWidth: .infinity)
             }
             .frame(width: 190, height: 22)
@@ -287,6 +283,7 @@ private struct ActionRow: View {
     var body: some View {
         HStack(alignment: .bottom, spacing: 12) {
             ActionCard(image: "ic_dressup", title: "Dress up", action: onDressUp)
+                .frame(width: 104)
 
             Button(action: onClaim) {
                 VStack(spacing: 4) {
@@ -311,10 +308,9 @@ private struct ActionRow: View {
             }
             .buttonStyle(PressableStyle())
             .disabled(!canClaim)
-            .frame(maxWidth: .infinity)
-            .layoutPriority(1)
 
             ActionCard(image: "ic_memories", title: "Memories", action: onMemories)
+                .frame(width: 104)
         }
     }
 }
