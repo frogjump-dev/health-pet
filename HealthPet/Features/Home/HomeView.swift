@@ -251,6 +251,7 @@ private struct BondBar: View {
                     Capsule()
                         .fill(LinearGradient(colors: [Palette.honey, Palette.crust], startPoint: .leading, endPoint: .trailing))
                         .frame(width: badgeInset + (geo.size.width - badgeInset) * CGFloat(progress.current) / CGFloat(max(progress.needed, 1)))
+                        .opacity(progress.current > 0 ? 1 : 0)
                 }
                 Text("\(progress.current) / \(progress.needed)")
                     .font(.system(.caption, design: .rounded).weight(.bold))
