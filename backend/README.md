@@ -35,7 +35,7 @@ npm run typecheck
 
 ## Going live (one-time setup)
 
-1. **Supabase**: create a project. In Authentication → Providers, turn on *Anonymous sign-ins*.
+1. **Supabase**: create a project. In Authentication → Sign In / Providers → User Signups, turn on *Allow anonymous sign-ins*.
 2. **Whoop**: create an app at developer-dashboard.whoop.com.
    - Redirect URL: `https://<project-ref>.supabase.co/functions/v1/whoop-callback`
    - Webhook URL (model v2): `https://<project-ref>.supabase.co/functions/v1/whoop-webhook`
@@ -44,10 +44,15 @@ npm run typecheck
    ```
    supabase link --project-ref <project-ref>
    supabase db push
-   supabase secrets set WHOOP_CLIENT_ID=… WHOOP_CLIENT_SECRET=… \
-     WHOOP_REDIRECT_URI=https://<project-ref>.supabase.co/functions/v1/whoop-callback \
-     TOKEN_ENCRYPTION_KEY=$(openssl rand -base64 32)
+   supabase secrets set --env-file supabase/.env.whoop
    supabase functions deploy
+   ```
+   `supabase/.env.whoop` is gitignored and never leaves your machine. It holds:
+   ```
+   WHOOP_CLIENT_ID=…
+   WHOOP_CLIENT_SECRET=…
+   WHOOP_REDIRECT_URI=https://<project-ref>.supabase.co/functions/v1/whoop-callback
+   TOKEN_ENCRYPTION_KEY=<output of: openssl rand -base64 32>
    ```
 4. **App**: copy `Config/Secrets.example.xcconfig` to `Config/Secrets.xcconfig`, fill in the
    project ref and anon key, then `xcodegen generate`.
