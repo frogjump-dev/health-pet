@@ -79,7 +79,7 @@ private struct PetStage: View {
                 .frame(width: height * 0.82)
                 .offset(y: -height * 0.02)
 
-            model.skin.makeView(state: model.petState)
+            model.skin.makeView(state: model.petState, reactions: model.reactionCount)
                 .frame(height: height * 0.72)
                 .scaleEffect(bounce ? 1.08 : 1, anchor: .bottom)
                 .offset(y: -height * 0.12)

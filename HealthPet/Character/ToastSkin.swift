@@ -7,7 +7,7 @@ struct ToastSkin: CharacterSkin {
     let id = "toast-v1"
     let displayName = "Toast"
 
-    func makeView(state: PetState) -> AnyView {
+    func makeView(state: PetState, reactions: Int) -> AnyView {
         AnyView(ToastView(state: state))
     }
 
