@@ -1,0 +1,46 @@
+import Foundation
+
+/// Combines per-day snapshots from several sources into one snapshot per day.
+///
+/// A wearable is better at sleep and recovery, the phone is better at steps (it is carried
+/// all day; a Whoop doesn't count steps). HRV and its method always come from the same
+/// snapshot so SDNN and RMSSD are never mixed within one day.
+public enum SnapshotMerger {
+    /// Earlier sources win for sleep, HRV, resting heart rate and recovery.
+    public static let recoveryPriority: [DataSource] = [.whoop, .healthKit, .mock]
+    /// Earlier sources win for steps.
+    public static let stepsPriority: [DataSource] = [.healthKit, .mock, .whoop]
+
+    public static func merge(_ snapshots: [HealthSnapshot]) -> [HealthSnapshot] {
+        Dictionary(grouping: snapshots, by: \.day)
+            .map { day, sameDay in mergeDay(day: day, sameDay) }
+            .sorted { $0.day < $1.day }
+    }
+
+    static func mergeDay(day: Date, _ sameDay: [HealthSnapshot]) -> HealthSnapshot {
+        if sameDay.count == 1 { return sameDay[0] }
+
+        func ordered(_ priority: [DataSource]) -> [HealthSnapshot] {
+            sameDay.sorted { rank($0.source, in: priority) < rank($1.source, in: priority) }
+        }
+        let byRecovery = ordered(recoveryPriority)
+        let bySteps = ordered(stepsPriority)
+        let hrvSource = byRecovery.first { $0.hrvMs != nil }
+
+        let sources = Set(sameDay.map(\.source))
+        return HealthSnapshot(
+            day: day,
+            source: sources.count == 1 ? sameDay[0].source : .combined,
+            steps: bySteps.lazy.compactMap(\.steps).first,
+            sleepHours: byRecovery.lazy.compactMap(\.sleepHours).first,
+            hrvMs: hrvSource?.hrvMs,
+            hrvMethod: hrvSource?.hrvMethod,
+            restingHeartRate: byRecovery.lazy.compactMap(\.restingHeartRate).first,
+            vendorRecovery: byRecovery.lazy.compactMap(\.vendorRecovery).first
+        )
+    }
+
+    private static func rank(_ source: DataSource, in priority: [DataSource]) -> Int {
+        priority.firstIndex(of: source) ?? priority.count
+    }
+}

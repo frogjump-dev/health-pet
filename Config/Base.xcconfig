@@ -1,0 +1,6 @@
+// Shared build settings. Put real values in Config/Secrets.xcconfig (git-ignored);
+// see Config/Secrets.example.xcconfig. Without them the app runs, but Whoop is unavailable.
+SUPABASE_PROJECT_REF =
+SUPABASE_ANON_KEY =
+
+#include? "Secrets.xcconfig"

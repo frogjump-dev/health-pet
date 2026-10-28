@@ -169,7 +169,7 @@ private struct PatBubble: View {
                         .overlay(Circle().stroke(.white.opacity(0.8), lineWidth: 1.5))
                     VStack(spacing: 0) {
                         Image("ic_heart").resizable().scaledToFit().frame(width: 34)
-                        Text("+\(AppModel.pointsPerPat)")
+                        Text("+\(PetStore.pointsPerPat)")
                             .font(.system(.caption, design: .rounded).weight(.bold))
                             .foregroundStyle(Palette.crust)
                     }
@@ -301,7 +301,7 @@ private struct ActionRow: View {
                     Text(canClaim ? "Daily treat" : "Claimed")
                         .font(.system(.headline, design: .rounded).weight(.bold))
                         .foregroundStyle(Palette.ink.opacity(canClaim ? 0.85 : 0.5))
-                    Text(canClaim ? "+\(AppModel.pointsPerTreat)" : "Back tomorrow")
+                    Text(canClaim ? "+\(PetStore.pointsPerTreat)" : "Back tomorrow")
                         .font(.system(.subheadline, design: .rounded).weight(.semibold))
                         .foregroundStyle(Palette.ink.opacity(0.55))
                 }
