@@ -23,5 +23,6 @@ struct RootView: View {
         // Single-screen app: the room is home; memories and settings open as sheets.
         HomeView()
             .preferredColorScheme(.light)
+            .tint(Palette.crust)
     }
 }

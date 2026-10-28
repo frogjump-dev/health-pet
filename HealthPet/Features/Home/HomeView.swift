@@ -27,7 +27,7 @@ struct HomeView: View {
                     BondBar(name: model.skin.displayName, bond: model.bond)
                         .padding(.top, 12)
 
-                    Spacer(minLength: 16)
+                    Spacer(minLength: 28)
 
                     ActionRow(
                         canClaim: model.canClaimTreat,
@@ -80,7 +80,7 @@ private struct PetStage: View {
                 .offset(y: -height * 0.02)
 
             model.skin.makeView(state: model.petState)
-                .frame(height: height * 0.66)
+                .frame(height: height * 0.72)
                 .scaleEffect(bounce ? 1.08 : 1, anchor: .bottom)
                 .offset(y: -height * 0.12)
                 .onTapGesture { model.pat() }
@@ -103,7 +103,7 @@ private struct PetStage: View {
                 .offset(y: -height * 0.06)
                 .accessibilityLabel("Toaster bed")
         }
-        .frame(height: height)
+        .frame(height: height, alignment: .bottom)
         .frame(maxWidth: .infinity)
         .overlay(alignment: .topLeading) {
             PatBubble { model.pat() }
@@ -235,6 +235,8 @@ private struct TopBar: View {
 private struct BondBar: View {
     let name: String
     let bond: Bond
+    /// The part of the bar hidden under the "Lv" badge; the fill starts after it.
+    private let badgeInset: CGFloat = 34
 
     var body: some View {
         let progress = bond.progress
@@ -248,7 +250,7 @@ private struct BondBar: View {
                 GeometryReader { geo in
                     Capsule()
                         .fill(LinearGradient(colors: [Palette.honey, Palette.crust], startPoint: .leading, endPoint: .trailing))
-                        .frame(width: max(geo.size.width * CGFloat(progress.current) / CGFloat(max(progress.needed, 1)), 24))
+                        .frame(width: badgeInset + (geo.size.width - badgeInset) * CGFloat(progress.current) / CGFloat(max(progress.needed, 1)))
                 }
                 Text("\(progress.current) / \(progress.needed)")
                     .font(.system(.caption, design: .rounded).weight(.bold))
@@ -295,10 +297,10 @@ private struct ActionRow: View {
                         .saturation(canClaim ? 1 : 0.3)
                         .offset(y: -26)
                         .padding(.bottom, -26)
-                    Text(canClaim ? "Daily treat" : "See you tomorrow")
+                    Text(canClaim ? "Daily treat" : "Claimed")
                         .font(.system(.headline, design: .rounded).weight(.bold))
                         .foregroundStyle(Palette.ink.opacity(canClaim ? 0.85 : 0.5))
-                    Text(canClaim ? "+\(AppModel.pointsPerTreat)" : "Claimed")
+                    Text(canClaim ? "+\(AppModel.pointsPerTreat)" : "Back tomorrow")
                         .font(.system(.subheadline, design: .rounded).weight(.semibold))
                         .foregroundStyle(Palette.ink.opacity(0.55))
                 }
