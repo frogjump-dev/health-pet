@@ -11,7 +11,11 @@ struct SettingsView: View {
         NavigationStack {
             Form {
                 Section {
-                    Button("Connect Apple Health") { Task { await model.connectAppleHealth() } }
+                    if model.appleHealthConnected {
+                        LabeledContent("Status", value: "Connected")
+                    } else {
+                        Button("Connect Apple Health") { Task { await model.connectAppleHealth() } }
+                    }
                 } header: {
                     Text("Apple Health")
                 } footer: {

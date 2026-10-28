@@ -24,6 +24,9 @@ final class AppModel {
     private(set) var today: HealthSnapshot?
     private(set) var isLoading = false
     private(set) var whoopStatus: WhoopStatus
+    /// HealthKit never reveals whether read access was granted, so this only records that
+    /// the user went through the permission sheet.
+    private(set) var appleHealthConnected: Bool
     /// Bumped on every pat or treat so the pet view can play a reaction.
     private(set) var reactionCount = 0
     var errorMessage: String?
@@ -48,6 +51,7 @@ final class AppModel {
     private enum Keys {
         static let dataMode = "dataMode"
         static let whoopConnected = "whoopConnected"
+        static let appleHealthConnected = "appleHealthConnected"
     }
 
     init(defaults: UserDefaults = .standard, backend: Backend? = Backend.shared) {
@@ -62,6 +66,7 @@ final class AppModel {
         let fallback = DataMode.live
         #endif
         dataMode = defaults.string(forKey: Keys.dataMode).flatMap(DataMode.init) ?? fallback
+        appleHealthConnected = defaults.bool(forKey: Keys.appleHealthConnected)
 
         if backend == nil {
             whoopStatus = .unavailable
@@ -94,6 +99,8 @@ final class AppModel {
     func connectAppleHealth() async {
         do {
             try await healthKit.requestAuthorization()
+            appleHealthConnected = true
+            defaults.set(true, forKey: Keys.appleHealthConnected)
             await refresh()
         } catch {
             errorMessage = error.localizedDescription
@@ -145,8 +152,10 @@ final class AppModel {
 
         case .live:
             let healthKit = healthKit, whoop = whoop
+            // Unconnected sources are skipped rather than reported as errors.
+            let phoneLinked = appleHealthConnected
             let whoopLinked = whoopStatus == .connected
-            async let phone = Self.fetch(healthKit, from: start, to: now)
+            async let phone = phoneLinked ? Self.fetch(healthKit, from: start, to: now) : .success([])
             async let band = whoopLinked ? Self.fetch(whoop, from: start, to: now) : .success([])
 
             for result in await [phone, band] {
