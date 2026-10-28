@@ -20,13 +20,8 @@ struct HealthPetApp: App {
 
 struct RootView: View {
     var body: some View {
-        TabView {
-            HomeView()
-                .tabItem { Label("Pet", systemImage: "house") }
-            MemoriesView()
-                .tabItem { Label("Memories", systemImage: "photo.on.rectangle") }
-            SettingsView()
-                .tabItem { Label("Settings", systemImage: "gearshape") }
-        }
+        // Single-screen app: the room is home; memories and settings open as sheets.
+        HomeView()
+            .preferredColorScheme(.light)
     }
 }
