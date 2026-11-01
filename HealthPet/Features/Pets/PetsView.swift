@@ -28,12 +28,19 @@ struct PetsView: View {
                 VStack(alignment: .leading, spacing: 0) {
                     FeaturedPet(pet: selected, weeks: model.disciplinedWeekCount)
                         .padding(.top, 12)
-                    ChibiButton(title: selected.id == model.mainPet.id ? "Your main pet" : "Set as main",
-                                primary: false, height: 38) {
-                        model.mainPetID = selected.id
+                    if selected.id == model.mainPet.id {
+                        Label("Main pet · stands in the middle of your kitchen", systemImage: "star.fill")
+                            .font(ChibiFont.bold(12))
+                            .foregroundStyle(Palette.inkSoft)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 38)
+                            .padding(.top, 10)
+                    } else {
+                        ChibiButton(title: "Set as main pet", primary: false, height: 38) {
+                            model.mainPetID = selected.id
+                        }
+                        .padding(.top, 10)
                     }
-                    .disabled(selected.id == model.mainPet.id)
-                    .padding(.top, 10)
 
                     ForEach(PetFamily.allCases) { family in
                         section(family)
@@ -45,8 +52,12 @@ struct PetsView: View {
             }
             .scrollIndicators(.hidden)
             .overlay(alignment: .bottom) {
+                // Bright yellow only when there's a ticket to spend.
                 ChibiButton(title: "Bake a new friend",
-                            detail: "· \(model.bakeTickets) ticket\(model.bakeTickets == 1 ? "" : "s")") {
+                            detail: model.bakeTickets > 0
+                                ? "· \(model.bakeTickets) ticket\(model.bakeTickets == 1 ? "" : "s")"
+                                : "· finish a Discipline Week",
+                            primary: model.bakeTickets > 0) {
                     showBakeInfo = true
                 }
                 .padding(.horizontal, 16)

@@ -66,7 +66,7 @@ struct ShareView: View {
                     if let image {
                         ShareLink(item: Image(uiImage: image),
                                   preview: SharePreview("My HealthPet card", image: Image(uiImage: image))) {
-                            HStack { OutlinedText(text: "Share card", font: ChibiFont.title(19)) }
+                            HStack { OutlinedText(text: "Share card", font: ChibiFont.title(19), tracking: 1) }
                                 .frame(maxWidth: .infinity)
                                 .frame(height: 54)
                                 .chibiPanel(RoundedRectangle(cornerRadius: 18, style: .continuous), fill: Palette.butter)
@@ -290,10 +290,13 @@ struct ShareCard: View {
 
     private var scene: some View {
         ZStack(alignment: .bottom) {
+            // Zoom into the rug so the pets stand on it: shows roughly 28%–61% of the picture's height.
             Image("bg_home")
                 .resizable()
-                .scaledToFill()
-                .frame(width: 300, height: 220, alignment: Alignment(horizontal: .center, vertical: VerticalAlignment(BottomThird.self)))
+                .aspectRatio(contentMode: .fill)
+                .frame(width: 380, height: 675)
+                .offset(y: 37)
+                .frame(width: 300, height: 220)
                 .clipped()
 
             HStack(alignment: .bottom, spacing: -6) {
@@ -303,7 +306,7 @@ struct ShareCard: View {
                         .scaledToFit()
                         .frame(height: index == 1 || content.pets.count == 1 ? 120 : 100)
                         .scaleEffect(x: index == 2 ? -1 : 1)
-                        .padding(.bottom, index == 1 ? 8 : 26)
+                        .padding(.bottom, index == 1 ? 26 : 46)
                 }
             }
 
@@ -322,7 +325,3 @@ struct ShareCard: View {
     }
 }
 
-/// Crops the kitchen background around the rug (lower part of the picture).
-private enum BottomThird: AlignmentID {
-    static func defaultValue(in context: ViewDimensions) -> CGFloat { context.height * 0.62 }
-}

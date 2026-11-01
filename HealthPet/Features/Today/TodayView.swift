@@ -154,12 +154,18 @@ private struct SleepCard: View {
         .chibiPanel(RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
 
+    /// " · 7h 30m", or nothing without a sleep length.
+    private var slept: String {
+        guard let hours = today?.sleepHours else { return "" }
+        return " · \(Int(hours))h \(Int((hours * 60).truncatingRemainder(dividingBy: 60)))m"
+    }
+
     private func caption(_ onTime: Bool?) -> String {
         guard let target else { return "Wear your watch to bed and it logs itself" }
         let latest = target.addingTimeInterval(TimeInterval(tracker.rules.bedtimeGraceMinutes * 60))
         switch onTime {
-        case true?: return "Goal \(time(target)) · counts if asleep by \(time(latest))"
-        case false?: return "A late one. Tonight is a fresh start"
+        case true?: return "Counts if asleep by \(time(latest))" + slept
+        case false?: return "A late one. Tonight is a fresh start" + slept
         case nil: return "Goal \(time(target)) · no sleep data for last night"
         }
     }
@@ -178,6 +184,7 @@ private struct SleepTimeline: View {
     private var start: Date { target.addingTimeInterval(-3600) }   // 1 h before the goal
     private var span: TimeInterval { 10 * 3600 }
     private var wake: Date? { hours.map { onset.addingTimeInterval($0 * 3600) } }
+
 
     private func x(_ date: Date, _ width: CGFloat) -> CGFloat {
         CGFloat(min(max(date.timeIntervalSince(start) / span, 0), 1)) * width
@@ -206,17 +213,19 @@ private struct SleepTimeline: View {
             }
             .frame(height: 16)
 
-            HStack {
-                Text(time(start))
-                Spacer()
-                Text("goal \(time(target))")
-                Spacer()
-                if let wake, let hours {
-                    Text("woke \(time(wake)) · \(Int(hours))h \(Int((hours * 60).truncatingRemainder(dividingBy: 60)))m")
-                    Spacer()
+            // Ends of the strip at the edges, the goal label right under its tick.
+            GeometryReader { geo in
+                let w = geo.size.width
+                ZStack(alignment: .leading) {
+                    Text(time(start))
+                    Text(time(start.addingTimeInterval(span))).frame(width: w, alignment: .trailing)
+                    Text("goal \(time(target))")
+                        .fixedSize()
+                        .frame(width: 80)
+                        .offset(x: min(max(x(target, w) - 40, 34), w - 114))
                 }
-                Text(time(start.addingTimeInterval(span)))
             }
+            .frame(height: 14)
             .font(ChibiFont.body(10.5))
             .foregroundStyle(Palette.inkSoft)
         }

@@ -46,6 +46,8 @@ struct OutlinedText: View {
     let text: String
     var font: Font = ChibiFont.title(13.5)
     var outline: CGFloat = 2
+    /// Extra letter spacing so the ink outline doesn't crowd the letters at big sizes.
+    var tracking: CGFloat = 0
 
     var body: some View {
         let offsets: [CGSize] = (0..<8).map { i in
@@ -54,9 +56,9 @@ struct OutlinedText: View {
         }
         ZStack {
             ForEach(offsets.indices, id: \.self) { i in
-                Text(text).font(font).foregroundStyle(Palette.ink).offset(offsets[i])
+                Text(text).font(font).tracking(tracking).foregroundStyle(Palette.ink).offset(offsets[i])
             }
-            Text(text).font(font).foregroundStyle(.white)
+            Text(text).font(font).tracking(tracking).foregroundStyle(.white)
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(text)
