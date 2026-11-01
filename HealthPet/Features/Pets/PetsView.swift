@@ -8,6 +8,8 @@ struct PetsView: View {
     @State private var selectedID: String?
     @State private var showBakeInfo = false
 
+    private static let featuredID = "featured"
+
     private var owned: Set<String> { Set(model.ownedPets.map(\.id)) }
     private var selected: RosterPet { selectedID.flatMap(RosterPet.pet(id:)) ?? model.mainPet }
 
@@ -24,33 +26,40 @@ struct PetsView: View {
             .overlay(Capsule().strokeBorder(Palette.ink, lineWidth: 2.5))
             .accessibilityLabel("\(model.bakeTickets) bake tickets")
         } content: {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    FeaturedPet(pet: selected, weeks: model.disciplinedWeekCount)
-                        .padding(.top, 12)
-                    if selected.id == model.mainPet.id {
-                        Label("Main pet · stands in the middle of your kitchen", systemImage: "star.fill")
-                            .font(ChibiFont.bold(12))
-                            .foregroundStyle(Palette.inkSoft)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 38)
+            ScrollViewReader { scroller in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 0) {
+                        FeaturedPet(pet: selected, weeks: model.disciplinedWeekCount)
+                            .padding(.top, 12)
+                            .id(Self.featuredID)
+                        if selected.id == model.mainPet.id {
+                            Label("Main pet · stands in the middle of your kitchen", systemImage: "star.fill")
+                                .font(ChibiFont.bold(12))
+                                .foregroundStyle(Palette.inkSoft)
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 38)
+                                .padding(.top, 10)
+                        } else {
+                            ChibiButton(title: "Set as main pet", primary: false, height: 38) {
+                                model.mainPetID = selected.id
+                            }
                             .padding(.top, 10)
-                    } else {
-                        ChibiButton(title: "Set as main pet", primary: false, height: 38) {
-                            model.mainPetID = selected.id
                         }
-                        .padding(.top, 10)
-                    }
 
-                    ForEach(PetFamily.allCases) { family in
-                        section(family)
+                        ForEach(PetFamily.allCases) { family in
+                            section(family)
+                        }
+                        guideRow
                     }
-                    guideRow
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 100)
                 }
-                .padding(.horizontal, 16)
-                .padding(.bottom, 100)
+                .scrollIndicators(.hidden)
+                // Picking a pet further down brings its big card into view.
+                .onChange(of: selectedID) {
+                    withAnimation(.easeInOut(duration: 0.3)) { scroller.scrollTo(Self.featuredID, anchor: .top) }
+                }
             }
-            .scrollIndicators(.hidden)
             .overlay(alignment: .bottom) {
                 // Bright yellow only when there's a ticket to spend.
                 ChibiButton(title: "Bake a new friend",
@@ -181,8 +190,10 @@ private struct FeaturedPet: View {
                     }
                 }
                 .padding(.top, 5)
-                Text(pet.family.map { "Family vibe: \($0.tagline)" } ?? "Shows you around the kitchen")
+                // One line for every pet so the card keeps its height when the selection changes.
+                Text(pet.family.map { $0.tagline.capitalizedFirst } ?? "Shows you around the kitchen")
                     .font(ChibiFont.body(12)).foregroundStyle(Palette.ink)
+                    .lineLimit(1).minimumScaleFactor(0.8)
                     .padding(.top, 7)
                 Text(stage == 0 ? Self.stageName(0) : "Stage \(stage) · \(Self.stageName(stage))")
                     .font(ChibiFont.body(12)).foregroundStyle(Palette.inkSoft)
@@ -242,4 +253,8 @@ private struct StageTrack: View {
         .frame(height: 6)
         .overlay(VStack { Palette.ink.frame(height: 2.5); Spacer(minLength: 0); Palette.ink.frame(height: 2.5) })
     }
+}
+
+private extension String {
+    var capitalizedFirst: String { prefix(1).uppercased() + dropFirst() }
 }
