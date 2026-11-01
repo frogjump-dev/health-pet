@@ -97,8 +97,8 @@ struct ChibiButton: View {
         Button(action: action) {
             HStack(spacing: 6) {
                 if primary {
-                    OutlinedText(text: title, font: ChibiFont.title(19), tracking: 1)
-                    if let detail { OutlinedText(text: detail, font: ChibiFont.title(15), tracking: 0.8) }
+                    OutlinedText(text: title, font: ChibiFont.title(19), outline: 1.8, tracking: 1.4)
+                    if let detail { OutlinedText(text: detail, font: ChibiFont.title(15), outline: 1.6, tracking: 1) }
                 } else {
                     Text(title).font(ChibiFont.title(height < 50 ? 15 : 19)).foregroundStyle(Palette.ink)
                     if let detail { Text(detail).font(ChibiFont.title(15)).foregroundStyle(Palette.inkSoft) }

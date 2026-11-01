@@ -98,9 +98,28 @@ private struct PetLine: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(.white))
                 .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Palette.ink, lineWidth: 3))
+                // Tail pointing at the pet.
+                .overlay(alignment: .bottomLeading) {
+                    BubbleTail()
+                        .fill(.white)
+                        .overlay(BubbleTail().stroke(Palette.ink, style: StrokeStyle(lineWidth: 3, lineJoin: .round)))
+                        .frame(width: 12, height: 14)
+                        .offset(x: -10, y: -10)
+                }
                 .padding(.bottom, 26)
         }
         .padding(.top, 6)
+    }
+}
+
+/// Left-pointing speech-bubble tail; its open right side tucks under the bubble's border.
+private struct BubbleTail: Shape {
+    func path(in rect: CGRect) -> Path {
+        Path { p in
+            p.move(to: CGPoint(x: rect.maxX + 1, y: rect.minY))
+            p.addLine(to: CGPoint(x: rect.minX, y: rect.midY + 2))
+            p.addLine(to: CGPoint(x: rect.maxX + 1, y: rect.maxY))
+        }
     }
 }
 
@@ -185,7 +204,6 @@ private struct SleepTimeline: View {
     private var span: TimeInterval { 10 * 3600 }
     private var wake: Date? { hours.map { onset.addingTimeInterval($0 * 3600) } }
 
-
     private func x(_ date: Date, _ width: CGFloat) -> CGFloat {
         CGFloat(min(max(date.timeIntervalSince(start) / span, 0), 1)) * width
     }
@@ -216,13 +234,13 @@ private struct SleepTimeline: View {
             // Ends of the strip at the edges, the goal label right under its tick.
             GeometryReader { geo in
                 let w = geo.size.width
-                ZStack(alignment: .leading) {
-                    Text(time(start))
-                    Text(time(start.addingTimeInterval(span))).frame(width: w, alignment: .trailing)
+                // No start label: the goal sits 1 h into the strip, so its label would collide with it.
+                ZStack {
+                    Text(time(start.addingTimeInterval(span)))
+                        .frame(width: w, alignment: .trailing)
                     Text("goal \(time(target))")
                         .fixedSize()
-                        .frame(width: 80)
-                        .offset(x: min(max(x(target, w) - 40, 34), w - 114))
+                        .position(x: max(x(target, w), 30), y: 7)
                 }
             }
             .frame(height: 14)

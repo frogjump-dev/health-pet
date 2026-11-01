@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import Photos
 import PetCore
 
 /// Share: turns the week (or today, or the pet crew) into a card worth showing off.
@@ -10,6 +11,7 @@ struct ShareView: View {
     @State private var showNumbers = true
     @State private var showBedtimes = false
     @State private var saved = false
+    @State private var saveFailed = false
 
     var body: some View {
         let card = ShareCard(content: content)
@@ -37,17 +39,22 @@ struct ShareView: View {
                         .rotationEffect(.degrees(-1.5))
                         .padding(.top, 20)
 
-                    VStack(spacing: 0) {
-                        toggle("Show exact numbers", "Off shows ticks only", isOn: $showNumbers)
-                        Rectangle()
-                            .stroke(Color(red: 0.88, green: 0.83, blue: 0.74), style: StrokeStyle(lineWidth: 2, dash: [5, 4]))
-                            .frame(height: 1)
-                        toggle("Show bedtimes", "Kept private by default", isOn: $showBedtimes)
+                    // Only the switches that change this card: pet cards have none.
+                    if template != .pets {
+                        VStack(spacing: 0) {
+                            toggle("Show exact numbers", "Off shows ticks only", isOn: $showNumbers)
+                            if template == .today {
+                                Rectangle()
+                                    .stroke(Color(red: 0.88, green: 0.83, blue: 0.74), style: StrokeStyle(lineWidth: 2, dash: [5, 4]))
+                                    .frame(height: 1)
+                                toggle("Show bedtime", "Kept private by default", isOn: $showBedtimes)
+                            }
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 4)
+                        .chibiPanel(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                        .padding(.top, 24)
                     }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 4)
-                    .chibiPanel(RoundedRectangle(cornerRadius: 20, style: .continuous))
-                    .padding(.top, 24)
                 }
                 .padding(.horizontal, 16)
                 .padding(.bottom, 100)
@@ -57,16 +64,13 @@ struct ShareView: View {
                 let image = render(card)
                 HStack(spacing: 10) {
                     ChibiButton(title: saved ? "Saved!" : "Save image", primary: false) {
-                        if let image {
-                            UIImageWriteToSavedPhotosAlbum(image, nil, nil, nil)
-                            saved = true
-                        }
+                        if let image { save(image) }
                     }
                     .frame(width: 130)
                     if let image {
                         ShareLink(item: Image(uiImage: image),
                                   preview: SharePreview("My HealthPet card", image: Image(uiImage: image))) {
-                            HStack { OutlinedText(text: "Share card", font: ChibiFont.title(19), tracking: 1) }
+                            HStack { OutlinedText(text: "Share card", font: ChibiFont.title(19), outline: 1.8, tracking: 1.4) }
                                 .frame(maxWidth: .infinity)
                                 .frame(height: 54)
                                 .chibiPanel(RoundedRectangle(cornerRadius: 18, style: .continuous), fill: Palette.butter)
@@ -82,6 +86,11 @@ struct ShareView: View {
                                            startPoint: .top, endPoint: .center))
             }
         }
+        .alert("Couldn't save the card", isPresented: $saveFailed) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Allow HealthPet to add photos in Settings → Privacy & Security → Photos, then try again.")
+        }
         .onChange(of: template) { saved = false }
         .onChange(of: showNumbers) { saved = false }
         .onChange(of: showBedtimes) { saved = false }
@@ -96,6 +105,23 @@ struct ShareView: View {
         }
         .tint(Palette.mintDeep)
         .padding(.vertical, 7)
+    }
+
+    /// Adds the card to Photos (add-only access) and only says "Saved!" when it really was.
+    private func save(_ image: UIImage) {
+        Task {
+            let status = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
+            guard status == .authorized || status == .limited else { saveFailed = true; return }
+            guard let data = image.pngData() else { saveFailed = true; return }
+            do {
+                try await PHPhotoLibrary.shared().performChanges {
+                    PHAssetCreationRequest.forAsset().addResource(with: .photo, data: data, options: nil)
+                }
+                saved = true
+            } catch {
+                saveFailed = true
+            }
+        }
     }
 
     @MainActor

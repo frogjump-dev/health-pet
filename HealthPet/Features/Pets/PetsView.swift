@@ -13,7 +13,7 @@ struct PetsView: View {
 
     var body: some View {
         let ownedCount = RosterPet.roster.filter { owned.contains($0.id) }.count
-        ChibiPage(title: "Pets", subtitle: "\(ownedCount) of \(RosterPet.roster.count) baked · plus Toast, your guide") {
+        ChibiPage(title: "Pets", subtitle: "\(ownedCount) of \(RosterPet.roster.count) baked") {
             HStack(spacing: 5) {
                 TicketGlyph()
                 Text("×\(model.bakeTickets)").font(ChibiFont.title(15)).foregroundStyle(Palette.ink)
@@ -149,6 +149,7 @@ struct PetsView: View {
             }
         }
         .buttonStyle(PressableStyle())
+        .disabled(!have)
         .frame(maxWidth: .infinity)
         .accessibilityLabel(have ? pet.name : "Not baked yet, \(pet.mbti)")
     }
@@ -183,7 +184,7 @@ private struct FeaturedPet: View {
                 Text(pet.family.map { "Family vibe: \($0.tagline)" } ?? "Shows you around the kitchen")
                     .font(ChibiFont.body(12)).foregroundStyle(Palette.ink)
                     .padding(.top, 7)
-                Text("Stage \(stage) · \(Self.stageName(stage))")
+                Text(stage == 0 ? Self.stageName(0) : "Stage \(stage) · \(Self.stageName(stage))")
                     .font(ChibiFont.body(12)).foregroundStyle(Palette.inkSoft)
                     .padding(.top, 6)
                 StageTrack(weeks: weeks).padding(.top, 4)
