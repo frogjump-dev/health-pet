@@ -24,6 +24,10 @@ final class AppModel {
     private(set) var today: HealthSnapshot?
     /// This calendar week's 自律周 progress.
     private(set) var week: WeekProgress?
+    /// This calendar week's days so far (Mon/Sun start per the user's calendar), oldest first.
+    private(set) var weekDays: [HealthSnapshot] = []
+    /// Today's HRV is clearly above the user's own 30-day normal. A bonus line only, never scored.
+    private(set) var recoveryBonus = false
     /// On-time nights in a row, up to last night.
     private(set) var onTimeStreak = 0
     private(set) var isLoading = false
@@ -56,6 +60,7 @@ final class AppModel {
         static let dataMode = "dataMode"
         static let whoopConnected = "whoopConnected"
         static let appleHealthConnected = "appleHealthConnected"
+        static let mainPetID = "mainPetID"
     }
 
     init(defaults: UserDefaults = .standard, backend: Backend? = Backend.shared) {
@@ -71,6 +76,7 @@ final class AppModel {
         #endif
         dataMode = defaults.string(forKey: Keys.dataMode).flatMap(DataMode.init) ?? fallback
         appleHealthConnected = defaults.bool(forKey: Keys.appleHealthConnected)
+        mainPetID = defaults.string(forKey: Keys.mainPetID) ?? RosterPet.toast.id
 
         if backend == nil {
             whoopStatus = .unavailable
@@ -89,9 +95,36 @@ final class AppModel {
     var daysTogether: Int { store.daysTogether }
     var canClaimTreat: Bool { store.canClaimTreat }
 
+    /// Pets the user has. TODO: the starter four stand in until baking (出炉券) is built.
+    var ownedPets: [RosterPet] { RosterPet.starters }
+
+    /// The pet in the middle of the room, in the top bar and on share cards.
+    var mainPetID: String {
+        didSet { defaults.set(mainPetID, forKey: Keys.mainPetID) }
+    }
+
+    var mainPet: RosterPet {
+        ownedPets.first { $0.id == mainPetID } ?? .toast
+    }
+
     /// The pets standing in the room, main pet first.
-    /// TODO: the starter four stand in until the collection (出炉券) is built.
-    var homePets: [RosterPet] { RosterPet.starters }
+    var homePets: [RosterPet] {
+        [mainPet] + ownedPets.filter { $0.id != mainPet.id }
+    }
+
+    /// Unspent 出炉券: one per finished 自律周. TODO: subtract pets baked once baking exists.
+    var bakeTickets: Int { store.disciplinedWeeks.count }
+
+    /// Evolution stage reached with the user's cumulative 自律周 (0 = starting look).
+    var evolutionStage: Int { Evolution.stage(forDisciplinedWeeks: disciplinedWeekCount) }
+
+    /// The user's most frequent workout this week, e.g. "Run", for titles on share cards.
+    var favouriteWorkout: String? {
+        let types = weekDays.compactMap(\.workoutType)
+        return Dictionary(grouping: types, by: { $0 }).max { $0.value.count < $1.value.count }?.key
+    }
+
+    var weekSteps: Int { weekDays.compactMap(\.steps).reduce(0, +) }
 
     var discipline: DisciplineTracker {
         DisciplineTracker(bedtime: Bedtime(hour: sleepSchedule.bedtimeHour))
@@ -230,6 +263,14 @@ final class AppModel {
 
         let tracker = discipline
         week = tracker.week(containing: now, snapshots: snapshots)
+        let weekStart = tracker.weekStart(for: now)
+        weekDays = snapshots.filter { $0.day >= weekStart && $0.day <= todayStart }.sorted { $0.day < $1.day }
+        let baseline = PersonalBaseline.from(history: history, before: todayStart, hrvMethod: todaySnapshot.hrvMethod)
+        if let hrv = todaySnapshot.hrvMs, let normal = baseline.hrvMs, baseline.isReliable {
+            recoveryBonus = hrv >= normal * 1.05
+        } else {
+            recoveryBonus = false
+        }
         onTimeStreak = tracker.onTimeStreak(snapshots)
         if recordMemories && dataMode == .live {
             store.recordDisciplinedWeeks(tracker.disciplinedWeeks(in: snapshots, before: now))

@@ -6,6 +6,17 @@ import PetCore
 struct HomeView: View {
     @Environment(AppModel.self) private var model
     @State private var sheet: HomeSheet?
+    @State private var page: HomePage?
+
+    /// Today, Pets and Share are full pages with their own back button; the rest are sheets.
+    private func open(_ target: HomeSheet) {
+        switch target {
+        case .today: page = .today
+        case .pets: page = .pets
+        case .share: page = .share
+        default: sheet = target
+        }
+    }
 
     var body: some View {
         ZStack {
@@ -15,7 +26,7 @@ struct HomeView: View {
             .ignoresSafeArea()
 
             VStack(spacing: 0) {
-                TopBar(daysTogether: model.daysTogether, petName: model.skin.displayName,
+                TopBar(daysTogether: model.daysTogether, pet: model.mainPet,
                        onFriends: { sheet = .friends }, onMore: { sheet = .more })
                     .padding(.horizontal, 16)
 
@@ -24,31 +35,38 @@ struct HomeView: View {
                 VStack(spacing: 14) {
                     TodayCard(today: model.today, tracker: model.discipline)
                     WeekStrip(week: model.week, weekInBlock: model.weekInBlock)
-                    Dock { sheet = $0 }
+                    Dock { open($0) }
                         .padding(.top, 6)
                 }
                 .padding(.horizontal, 16)
                 .padding(.bottom, 4)
             }
         }
+        .fullScreenCover(item: $page) { page in
+            switch page {
+            case .today: TodayView()
+            case .pets: PetsView()
+            case .share: ShareView()
+            }
+        }
         .sheet(item: $sheet) { sheet in
             switch sheet {
-            case .today:
-                NavigationStack { TodayDetailsView(state: model.petState, today: model.today) }
+            case .today, .pets, .share: EmptyView() // full-screen pages, see `open`
             case .settings: SettingsView()
             case .memories: MemoriesView()
             case .more: MoreSheet(open: { self.sheet = $0 })
-            case .pets: ComingSoonView(title: "Pets", image: "ic_pets",
-                                       message: "Every disciplined week bakes a new friend for your collection.")
             case .dressUp: ComingSoonView(title: "Dress up", image: "ic_dressup",
                                           message: "Hats, bandanas and crumbs of style are on the way.")
-            case .share: ComingSoonView(title: "Share", image: "ic_share",
-                                        message: "Turn your week into a card worth showing off.")
             case .friends, .world: ComingSoonView(title: "Friends", image: "ic_friends",
                                                   message: "Soon your pets can visit your friends' kitchens.")
             }
         }
     }
+}
+
+enum HomePage: String, Identifiable {
+    case today, pets, share
+    var id: String { rawValue }
 }
 
 enum HomeSheet: String, Identifiable {
@@ -130,7 +148,7 @@ private struct PetSprite: View {
     @State private var hearts: [FloatingHeart] = []
 
     var body: some View {
-        Image(pet.image)
+        Image(pet.art)
             .resizable()
             .scaledToFit()
             .frame(height: height)
@@ -238,14 +256,14 @@ private struct BubbleTail: Shape {
 
 private struct TopBar: View {
     let daysTogether: Int
-    let petName: String
+    let pet: RosterPet
     let onFriends: () -> Void
     let onMore: () -> Void
 
     var body: some View {
         HStack {
             HStack(spacing: 8) {
-                Image(RosterPet.toast.image)
+                Image(pet.art)
                     .resizable()
                     .scaledToFit()
                     .frame(height: 48)
@@ -259,7 +277,7 @@ private struct TopBar: View {
                     Text("Day \(daysTogether)")
                         .font(ChibiFont.title(19))
                         .foregroundStyle(Palette.ink)
-                    Text("with \(petName)")
+                    Text("with \(pet.name)")
                         .font(ChibiFont.body(12))
                         .foregroundStyle(Palette.inkSoft)
                 }
