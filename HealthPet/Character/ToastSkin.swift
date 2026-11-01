@@ -27,7 +27,7 @@ private struct ToastView: View {
     @State private var bob = false
 
     var body: some View {
-        Image(RosterPet.toast.image)
+        Image(RosterPet.toast.art)
             .resizable()
             .scaledToFit()
             .saturation(state.isAsleep ? 0.4 : 1)

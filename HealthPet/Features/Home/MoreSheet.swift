@@ -64,20 +64,18 @@ struct ComingSoonView: View {
     let message: String
 
     var body: some View {
-        VStack(spacing: 16) {
-            Image(image).resizable().scaledToFit().frame(height: 120)
-            Text(title).font(.system(.title2, design: .rounded).weight(.bold))
+        VStack(spacing: 12) {
+            Image(image).resizable().scaledToFit().frame(height: 110)
+            Text(title).font(ChibiFont.title(26)).foregroundStyle(Palette.ink)
             Text(message)
-                .font(.system(.body, design: .rounded))
-                .foregroundStyle(.secondary)
+                .font(ChibiFont.body(15))
+                .foregroundStyle(Palette.inkSoft)
                 .multilineTextAlignment(.center)
-            Text("Coming soon")
-                .font(.system(.caption, design: .rounded).weight(.bold))
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .background(Capsule().fill(Palette.honey.opacity(0.4)))
+            ChibiChip(text: "Coming soon", fill: Palette.butter)
         }
         .padding(32)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(PageBackground().ignoresSafeArea())
         .presentationDetents([.medium])
     }
 }
