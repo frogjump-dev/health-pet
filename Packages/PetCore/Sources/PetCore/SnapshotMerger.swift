@@ -26,6 +26,8 @@ public enum SnapshotMerger {
         let byRecovery = ordered(recoveryPriority)
         let bySteps = ordered(stepsPriority)
         let hrvSource = byRecovery.first { $0.hrvMs != nil }
+        // Sources see different workouts, so take the longest one any of them recorded.
+        let workout = sameDay.filter { $0.workoutMinutes != nil }.max { $0.workoutMinutes! < $1.workoutMinutes! }
 
         let sources = Set(sameDay.map(\.source))
         return HealthSnapshot(
@@ -36,7 +38,10 @@ public enum SnapshotMerger {
             hrvMs: hrvSource?.hrvMs,
             hrvMethod: hrvSource?.hrvMethod,
             restingHeartRate: byRecovery.lazy.compactMap(\.restingHeartRate).first,
-            vendorRecovery: byRecovery.lazy.compactMap(\.vendorRecovery).first
+            vendorRecovery: byRecovery.lazy.compactMap(\.vendorRecovery).first,
+            sleepOnset: byRecovery.lazy.compactMap(\.sleepOnset).first,
+            workoutMinutes: workout?.workoutMinutes,
+            workoutType: workout?.workoutType
         )
     }
 

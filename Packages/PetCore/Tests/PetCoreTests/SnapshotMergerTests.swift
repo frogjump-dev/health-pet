@@ -46,4 +46,17 @@ final class SnapshotMergerTests: XCTestCase {
         XCTAssertEqual(merged[0].source, .whoop)
         XCTAssertEqual(merged[1].source, .healthKit)
     }
+
+    func testLongestWorkoutWinsAndWearableSleepOnset() {
+        let bed = day.addingTimeInterval(-3_600)
+        let phone = HealthSnapshot(day: day, source: .healthKit, steps: 5_000,
+                                   sleepOnset: bed.addingTimeInterval(600), workoutMinutes: 25, workoutType: "Run")
+        let whoop = HealthSnapshot(day: day, source: .whoop, sleepOnset: bed, workoutMinutes: 40, workoutType: "Workout")
+
+        let m = SnapshotMerger.merge([phone, whoop])[0]
+
+        XCTAssertEqual(m.sleepOnset, bed)
+        XCTAssertEqual(m.workoutMinutes, 40)
+        XCTAssertEqual(m.workoutType, "Workout", "minutes and type come from the same workout")
+    }
 }

@@ -22,6 +22,10 @@ enum WhoopStatus: Equatable {
 final class AppModel {
     private(set) var petState: PetState = .neutral
     private(set) var today: HealthSnapshot?
+    /// This calendar week's 自律周 progress.
+    private(set) var week: WeekProgress?
+    /// On-time nights in a row, up to last night.
+    private(set) var onTimeStreak = 0
     private(set) var isLoading = false
     private(set) var whoopStatus: WhoopStatus
     /// HealthKit never reveals whether read access was granted, so this only records that
@@ -84,6 +88,34 @@ final class AppModel {
     var memories: [MemoryEvent] { store.memories }
     var daysTogether: Int { store.daysTogether }
     var canClaimTreat: Bool { store.canClaimTreat }
+
+    /// The pets standing in the room, main pet first.
+    /// TODO: the starter four stand in until the collection (出炉券) is built.
+    var homePets: [RosterPet] { RosterPet.starters }
+
+    var discipline: DisciplineTracker {
+        DisciplineTracker(bedtime: Bedtime(hour: sleepSchedule.bedtimeHour))
+    }
+
+    /// Which week of the current 4-week achievement block this is (1...4), counted from adoption.
+    var weekInBlock: Int {
+        let tracker = discipline
+        let weeks = Calendar.current.dateComponents([.weekOfYear], from: tracker.weekStart(for: store.adoptedOn),
+                                                    to: tracker.weekStart(for: Date())).weekOfYear ?? 0
+        return weeks % tracker.rules.weeksPerBlock + 1
+    }
+
+    var disciplinedWeekCount: Int { store.disciplinedWeeks.count }
+
+    /// The main pet's bubble: cheers for what got logged, otherwise how it feels. Never a score.
+    var homeLine: String {
+        if petState.isAsleep { return skin.greeting(for: petState) }
+        if onTimeStreak >= 2 { return "Slept on time \(onTimeStreak) nights!" }
+        if let today, discipline.countsAsWorkout(today) {
+            return today.workoutType.map { "\($0) logged. Proud of you!" } ?? "10k steps today. Nice walking!"
+        }
+        return skin.greeting(for: petState)
+    }
 
     func pat() {
         reactionCount += 1
@@ -151,6 +183,8 @@ final class AppModel {
             collected = (try? await DemoHealthProvider(scenario: demoScenario).snapshots(from: start, to: now)) ?? []
 
         case .live:
+            // Asks only for types added since the user first connected (e.g. workouts); no sheet otherwise.
+            if appleHealthConnected { try? await healthKit.requestAuthorization() }
             let healthKit = healthKit, whoop = whoop
             // Unconnected sources are skipped rather than reported as errors.
             let phoneLinked = appleHealthConnected
@@ -193,6 +227,13 @@ final class AppModel {
         var state = engine.evaluate(today: todaySnapshot, history: history)
         state.isAsleep = sleepSchedule.isBedtime(at: now)
         petState = state
+
+        let tracker = discipline
+        week = tracker.week(containing: now, snapshots: snapshots)
+        onTimeStreak = tracker.onTimeStreak(snapshots)
+        if recordMemories && dataMode == .live {
+            store.recordDisciplinedWeeks(tracker.disciplinedWeeks(in: snapshots, before: now))
+        }
 
         if recordMemories {
             store.addMemories(memoryDetector.newMemories(today: todaySnapshot, history: history,

@@ -1,6 +1,6 @@
 # HealthPet（健康陪伴宠物）· iOS 基础框架 v0.1
 
-原生 SwiftUI，iOS 17+。宠物形象 v1 是「面包人」(toast)，但角色只是一层「皮肤」，可以随时替换。
+原生 SwiftUI，iOS 17+。宠物是早餐系 2D Q 版角色（主宠「面包人」+ 图鉴里的伙伴），角色只是一层「皮肤」，可以随时替换。
 
 ## 跑起来
 
@@ -20,6 +20,8 @@ Packages/PetCore/          与平台无关的核心逻辑（不依赖 HealthKit 
   PersonalBaseline         个人 30 天基线；HRV 只和同一种算法比较（Apple=SDNN，Whoop=RMSSD）
   PetStateEngine           健康数据 → 宠物状态（golden / burnt / soggy / fresh）
   Memories                 「共同回忆」相册的自动触发规则（第一次 2 万步、30/100/365 天纪念日）
+  Discipline               「自律周」规则：每周运动 3 次（单次训练 ≥20 分钟或当天 ≥1 万步）+ 准时睡 5 晚
+                           （入睡不晚于目标 30 分钟），每周可请假 1 天；进化 3 阶 = 累计 1 / 4 / 12 个自律周
 HealthPet/                 iOS App
   Health/                  数据源适配器：HealthKit（已实现）、Whoop（走后端，待建）、Demo
   Character/               角色皮肤协议 + 面包人皮肤（换角色只需新增一个 CharacterSkin）
@@ -28,7 +30,7 @@ HealthPet/                 iOS App
 
 ## 已按设计基线落实的规则
 
-- 首页不显示任何分数，点一下宠物（或右上角 Today）才看到数字
+- 首页（v3.1）是打卡优先：今天自动记下的入睡时间、运动、步数 + 本周自律周进度；HRV、恢复这类健康分数仍不上首页（底部 Today 里才看得到）
 - 宠物的反应都相对于「你自己的平常水平」，不跟大众标准比
 - 只有步数的用户也能得到正常的宠物状态
 - 宠物在睡觉时间自动入睡，不需要手动点「一起睡」

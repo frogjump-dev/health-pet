@@ -35,6 +35,7 @@ targets:
         CFBundleVersion: "1"
         UILaunchScreen: {}
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        UIAppFonts: [LilitaOne-Regular.ttf, Baloo2-ExtraBold.ttf, Baloo2-SemiBold.ttf]
         NSHealthShareUsageDescription: "Your pet reads your sleep, heart rate variability, resting heart rate and steps so it can feel how you feel. Data stays on your phone."
         NSHealthUpdateUsageDescription: "HealthPet does not write to Apple Health."
         SupabaseProjectRef: $(SUPABASE_PROJECT_REF)

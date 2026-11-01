@@ -3,7 +3,7 @@ import Observation
 import PetCore
 
 /// Everything about the pet that lives on this phone: adoption day, friendship, daily
-/// treat, memories, and the last health snapshots (so the pet shows up instantly, offline too).
+/// treat, memories, finished 自律周, and the last health snapshots (so the pet shows up instantly, offline too).
 /// Backed by UserDefaults for now; swap the storage here when it outgrows that.
 @MainActor
 @Observable
@@ -17,6 +17,8 @@ final class PetStore {
     private(set) var lastTreatDay: Date?
     private(set) var memories: [MemoryEvent]
     private(set) var cachedSnapshots: [HealthSnapshot]
+    /// Starts of every finished 自律周. Kept forever: evolution and titles only go up.
+    private(set) var disciplinedWeeks: Set<Date>
 
     private let defaults: UserDefaults
     private var pats: [String: Int]
@@ -28,6 +30,7 @@ final class PetStore {
         static let lastTreatDay = "lastTreatDay"
         static let pats = "pats"
         static let snapshots = "cachedSnapshots"
+        static let disciplinedWeeks = "disciplinedWeeks"
     }
 
     init(defaults: UserDefaults = .standard) {
@@ -44,6 +47,7 @@ final class PetStore {
         pats = defaults.dictionary(forKey: Keys.pats) as? [String: Int] ?? [:]
         memories = Self.decode([MemoryEvent].self, defaults.data(forKey: Keys.memories)) ?? []
         cachedSnapshots = Self.decode([HealthSnapshot].self, defaults.data(forKey: Keys.snapshots)) ?? []
+        disciplinedWeeks = Self.decode(Set<Date>.self, defaults.data(forKey: Keys.disciplinedWeeks)) ?? []
     }
 
     // MARK: - Friendship
@@ -91,6 +95,14 @@ final class PetStore {
         guard !new.isEmpty else { return }
         memories.append(contentsOf: new)
         defaults.set(try? JSONEncoder().encode(memories), forKey: Keys.memories)
+    }
+
+    /// Adds weeks that counted. Weeks are never removed, even if later data looks different.
+    func recordDisciplinedWeeks(_ weekStarts: [Date]) {
+        let updated = disciplinedWeeks.union(weekStarts)
+        guard updated != disciplinedWeeks else { return }
+        disciplinedWeeks = updated
+        defaults.set(try? JSONEncoder().encode(updated), forKey: Keys.disciplinedWeeks)
     }
 
     func cache(_ snapshots: [HealthSnapshot]) {
