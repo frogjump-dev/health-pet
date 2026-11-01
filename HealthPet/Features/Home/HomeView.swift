@@ -1,125 +1,177 @@
 import SwiftUI
 import PetCore
 
-/// The home screen is the pet's room: the pet on its cutting board, one friendly line,
-/// and three big buttons. No health scores here on purpose; numbers live under "More".
+/// Home v3.1: a wide breakfast kitchen with the pet gang on the rug, today's auto-logged
+/// check-ins and this week's 自律周 progress under them, and the main buttons at the bottom.
 struct HomeView: View {
     @Environment(AppModel.self) private var model
     @State private var sheet: HomeSheet?
 
     var body: some View {
-        GeometryReader { geo in
-            ZStack {
-                RoomBackground(isNight: model.petState.isAsleep)
+        ZStack {
+            HomeScene(pets: model.homePets, line: model.homeLine, isAsleep: model.petState.isAsleep) {
+                model.pat()
+            }
+            .ignoresSafeArea()
 
-                VStack(spacing: 0) {
-                    TopBar(daysTogether: model.daysTogether) { sheet = .settings }
-                        .padding(.horizontal, 16)
-                        .padding(.top, 8)
-
-                    Spacer(minLength: 8)
-
-                    SpeechBubble(text: model.skin.greeting(for: model.petState))
-                        .padding(.horizontal, 40)
-
-                    PetStage(height: min(geo.size.height * 0.5, 470))
-
-                    BondBar(name: model.skin.displayName, bond: model.bond)
-                        .padding(.top, 12)
-
-                    Spacer(minLength: 28)
-
-                    ActionRow(
-                        canClaim: model.canClaimTreat,
-                        onDressUp: { sheet = .dressUp },
-                        onClaim: { model.claimTreat() },
-                        onMemories: { sheet = .memories }
-                    )
+            VStack(spacing: 0) {
+                TopBar(daysTogether: model.daysTogether, petName: model.skin.displayName,
+                       onFriends: { sheet = .friends }, onMore: { sheet = .more })
                     .padding(.horizontal, 16)
 
-                    MoreHandle { sheet = .more }
-                        .padding(.top, 14)
+                Spacer(minLength: 0)
+
+                VStack(spacing: 14) {
+                    TodayCard(today: model.today, tracker: model.discipline)
+                    WeekStrip(week: model.week, weekInBlock: model.weekInBlock)
+                    Dock { sheet = $0 }
+                        .padding(.top, 6)
                 }
+                .padding(.horizontal, 16)
+                .padding(.bottom, 4)
             }
         }
         .sheet(item: $sheet) { sheet in
             switch sheet {
+            case .today:
+                NavigationStack { TodayDetailsView(state: model.petState, today: model.today) }
             case .settings: SettingsView()
             case .memories: MemoriesView()
             case .more: MoreSheet(open: { self.sheet = $0 })
+            case .pets: ComingSoonView(title: "Pets", image: "ic_pets",
+                                       message: "Every disciplined week bakes a new friend for your collection.")
             case .dressUp: ComingSoonView(title: "Dress up", image: "ic_dressup",
                                           message: "Hats, bandanas and crumbs of style are on the way.")
-            case .world: ComingSoonView(title: "World", image: "ic_world",
-                                        message: "Soon your toast can visit friends' pets.")
+            case .share: ComingSoonView(title: "Share", image: "ic_share",
+                                        message: "Turn your week into a card worth showing off.")
+            case .friends, .world: ComingSoonView(title: "Friends", image: "ic_friends",
+                                                  message: "Soon your pets can visit your friends' kitchens.")
             }
         }
     }
 }
 
 enum HomeSheet: String, Identifiable {
-    case settings, memories, more, dressUp, world
+    case today, pets, dressUp, memories, share, friends, more, settings, world
     var id: String { rawValue }
 }
 
-// MARK: - Pet stage
+// MARK: - Scene
 
-/// The pet standing on its board, a speech bubble, the pat bubble and the toaster bed.
-private struct PetStage: View {
-    @Environment(AppModel.self) private var model
+/// Background and pets are laid out on the 402×874 design canvas and scaled by screen height,
+/// the same way the background image is (aspect fill).
+private struct HomeScene: View {
+    let pets: [RosterPet]
+    let line: String
+    let isAsleep: Bool
+    let onPat: () -> Void
+
+    private static let design = CGSize(width: 402, height: 874)
+    /// Where pets stand, main pet first: centre x, feet y, height. Right-hand pets face left.
+    private static let slots: [Slot] = [
+        Slot(x: 201, feet: 418, height: 108), Slot(x: 78, feet: 452, height: 98), Slot(x: 326, feet: 452, height: 98),
+        Slot(x: 140, feet: 528, height: 98), Slot(x: 266, feet: 528, height: 98)
+    ]
+
+    private struct Slot {
+        var x: CGFloat
+        var feet: CGFloat
+        var height: CGFloat
+    }
+
+    private struct Placement: Identifiable {
+        var pet: RosterPet
+        var slot: Slot
+        var id: String { pet.id }
+    }
+
+    var body: some View {
+        GeometryReader { geo in
+            let s = geo.size.height / Self.design.height
+            let shiftX = geo.size.width / 2 - Self.design.width / 2 * s
+            // Back row first so pets nearer the camera are drawn on top.
+            let placed = zip(pets, Self.slots).map { Placement(pet: $0, slot: $1) }.sorted { $0.slot.feet < $1.slot.feet }
+
+            ZStack(alignment: .topLeading) {
+                Image("bg_home")
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: geo.size.width, height: geo.size.height)
+                    .clipped()
+
+                ForEach(placed) { place in
+                    PetSprite(pet: place.pet, height: place.slot.height * s,
+                              faceLeft: place.slot.x > Self.design.width / 2 + 20,
+                              isAsleep: isAsleep, onPat: onPat)
+                        .position(x: shiftX + place.slot.x * s, y: (place.slot.feet - place.slot.height / 2) * s)
+                }
+
+                SpeechBubble(text: line)
+                    .frame(maxWidth: 260 * s)
+                    .position(x: shiftX + Self.design.width / 2 * s, y: 284 * s)
+
+                Palette.night.opacity(isAsleep ? 0.3 : 0)
+                    .allowsHitTesting(false)
+            }
+            .animation(.easeInOut(duration: 1.2), value: isAsleep)
+        }
+    }
+}
+
+private struct PetSprite: View {
+    let pet: RosterPet
     let height: CGFloat
+    let faceLeft: Bool
+    let isAsleep: Bool
+    let onPat: () -> Void
 
+    @State private var bob = false
     @State private var bounce = false
     @State private var hearts: [FloatingHeart] = []
 
     var body: some View {
-        ZStack(alignment: .bottom) {
-            Image("pet_board")
-                .resizable()
-                .scaledToFit()
-                .frame(width: height * 0.82)
-                .offset(y: -height * 0.02)
-
-            model.skin.makeView(state: model.petState)
-                .frame(height: height * 0.72)
-                .scaleEffect(bounce ? 1.08 : 1, anchor: .bottom)
-                .offset(y: -height * 0.12)
-                .onTapGesture { model.pat() }
-
-            ForEach(hearts) { heart in
-                Image("ic_heart")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 28)
-                    .offset(x: heart.x, y: heart.rise ? -height * 0.85 : -height * 0.5)
-                    .opacity(heart.rise ? 0 : 1)
+        Image(pet.image)
+            .resizable()
+            .scaledToFit()
+            .frame(height: height)
+            .scaleEffect(x: faceLeft ? -1 : 1)
+            .scaleEffect(y: bob ? 1.02 : 0.98, anchor: .bottom)
+            .scaleEffect(bounce ? 1.12 : 1, anchor: .bottom)
+            .overlay(alignment: .topTrailing) {
+                if isAsleep { SleepyZ().offset(x: -height * 0.05, y: -height * 0.12) }
             }
-
-            Image("ic_toaster")
-                .resizable()
-                .scaledToFit()
-                .frame(width: height * 0.22)
-                .frame(maxWidth: .infinity, alignment: .trailing)
-                .padding(.trailing, 20)
-                .offset(y: -height * 0.06)
-                .accessibilityLabel("Toaster bed")
-        }
-        .frame(height: height, alignment: .bottom)
-        .frame(maxWidth: .infinity)
-        .overlay(alignment: .topLeading) {
-            PatBubble { model.pat() }
-                .padding(.leading, 24)
-                .padding(.top, height * 0.22)
-        }
-        .onChange(of: model.reactionCount) { react() }
+            .overlay(alignment: .top) {
+                ZStack {
+                    ForEach(hearts) { heart in
+                        Image("ic_heart")
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 22)
+                            .offset(x: heart.x, y: heart.rise ? -height * 0.45 : 0)
+                            .opacity(heart.rise ? 0 : 1)
+                    }
+                }
+            }
+            .contentShape(Rectangle())
+            .onTapGesture(perform: pat)
+            .onAppear {
+                // Each pet breathes on its own rhythm so the gang doesn't move in lockstep.
+                withAnimation(.easeInOut(duration: .random(in: 1.1...1.6)).repeatForever(autoreverses: true)) { bob = true }
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(pet.name)
+            .accessibilityAddTraits(.isButton)
+            .accessibilityHint("Pat")
     }
 
-    private func react() {
+    private func pat() {
+        onPat()
         withAnimation(.spring(response: 0.25, dampingFraction: 0.4)) { bounce = true }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
             withAnimation(.spring(response: 0.3, dampingFraction: 0.5)) { bounce = false }
         }
 
-        let heart = FloatingHeart(x: .random(in: -50...50))
+        let heart = FloatingHeart(x: .random(in: -20...20))
         hearts.append(heart)
         DispatchQueue.main.async {
             withAnimation(.easeOut(duration: 1.0)) {
@@ -138,233 +190,335 @@ private struct FloatingHeart: Identifiable {
     var rise = false
 }
 
+private struct SleepyZ: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: -4) {
+            OutlinedText(text: "z", font: ChibiFont.title(12), outline: 1.5).offset(x: 8)
+            OutlinedText(text: "z", font: ChibiFont.title(16), outline: 1.5)
+        }
+    }
+}
+
 private struct SpeechBubble: View {
     let text: String
 
     var body: some View {
         Text(text)
-            .font(.system(.subheadline, design: .rounded).weight(.semibold))
+            .font(ChibiFont.bold(13.5))
             .foregroundStyle(Palette.ink)
             .multilineTextAlignment(.center)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 9)
-            .background(.white.opacity(0.75), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Palette.ink.opacity(0.08)))
+            .lineLimit(2)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .chibiPanel(Capsule(), fill: .white, shadow: 0)
+            .overlay(alignment: .bottom) {
+                BubbleTail()
+                    .fill(.white)
+                    .overlay(BubbleTail().stroke(Palette.ink, style: StrokeStyle(lineWidth: 3, lineJoin: .round)))
+                    .frame(width: 16, height: 11)
+                    .offset(y: 9.5)
+            }
             .contentTransition(.opacity)
             .animation(.default, value: text)
     }
 }
 
-/// Floating "pat me" bubble, like a little glass orb next to the pet.
-private struct PatBubble: View {
-    let action: () -> Void
-    @State private var float = false
-
-    var body: some View {
-        Button(action: action) {
-            VStack(spacing: 4) {
-                ZStack {
-                    Circle()
-                        .fill(.white.opacity(0.35))
-                        .overlay(Circle().stroke(.white.opacity(0.8), lineWidth: 1.5))
-                    VStack(spacing: 0) {
-                        Image("ic_heart").resizable().scaledToFit().frame(width: 34)
-                        Text("+\(PetStore.pointsPerPat)")
-                            .font(.system(.caption, design: .rounded).weight(.bold))
-                            .foregroundStyle(Palette.crust)
-                    }
-                }
-                .frame(width: 64, height: 64)
-
-                Text("Pat")
-                    .font(.system(.caption, design: .rounded).weight(.bold))
-                    .foregroundStyle(Palette.ink.opacity(0.75))
-            }
+/// Downward tail; its open top edge sits on the bubble's border.
+private struct BubbleTail: Shape {
+    func path(in rect: CGRect) -> Path {
+        Path { p in
+            p.move(to: CGPoint(x: rect.minX, y: rect.minY))
+            p.addLine(to: CGPoint(x: rect.midX, y: rect.maxY))
+            p.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
         }
-        .buttonStyle(.plain)
-        .offset(y: float ? -4 : 4)
-        .animation(.easeInOut(duration: 1.8).repeatForever(autoreverses: true), value: float)
-        .onAppear { float = true }
-        .accessibilityLabel("Pat your pet")
     }
 }
 
-// MARK: - Top bar & bond
+// MARK: - Top bar
 
 private struct TopBar: View {
     let daysTogether: Int
-    let onMenu: () -> Void
+    let petName: String
+    let onFriends: () -> Void
+    let onMore: () -> Void
 
     var body: some View {
         HStack {
-            HStack(spacing: 10) {
-                Image("toast_golden")
+            HStack(spacing: 8) {
+                Image(RosterPet.toast.image)
                     .resizable()
                     .scaledToFit()
-                    .padding(5)
-                    .frame(width: 40, height: 40)
-                    .background(Circle().fill(.white.opacity(0.7)))
-                VStack(alignment: .leading, spacing: 0) {
+                    .frame(height: 48)
+                    .offset(x: 2, y: 8)
+                    .frame(width: 34, height: 34)
+                    .clipShape(Circle())
+                    .padding(2)
+                    .background(Circle().fill(Palette.creamDeep))
+                    .overlay(Circle().strokeBorder(Palette.ink, lineWidth: 2))
+                VStack(alignment: .leading, spacing: -2) {
                     Text("Day \(daysTogether)")
-                        .font(.system(.headline, design: .rounded).weight(.bold))
+                        .font(ChibiFont.title(19))
                         .foregroundStyle(Palette.ink)
-                    Text("together")
-                        .font(.system(.caption, design: .rounded))
-                        .foregroundStyle(Palette.ink.opacity(0.6))
+                    Text("with \(petName)")
+                        .font(ChibiFont.body(12))
+                        .foregroundStyle(Palette.inkSoft)
                 }
             }
-            .padding(.leading, 6)
-            .padding(.trailing, 18)
-            .padding(.vertical, 6)
-            .glass(Capsule())
+            .padding(.leading, 5)
+            .padding(.trailing, 22)
+            .padding(.vertical, 4)
+            .chibiPanel(Capsule(), shadow: 3)
 
             Spacer()
 
-            Button(action: onMenu) {
-                Image(systemName: "ellipsis")
-                    .font(.headline)
-                    .foregroundStyle(Palette.ink.opacity(0.7))
-                    .frame(width: 44, height: 44)
-                    .glass(Circle())
+            RoundButton(label: "Friends", action: onFriends) {
+                Image("ic_friends").resizable().scaledToFit().frame(width: 36)
             }
-            .accessibilityLabel("Settings")
-        }
-    }
-}
-
-private struct BondBar: View {
-    let name: String
-    let bond: Bond
-    /// The part of the bar hidden under the "Lv" badge; the fill starts after it.
-    private let badgeInset: CGFloat = 34
-
-    var body: some View {
-        let progress = bond.progress
-        VStack(spacing: 8) {
-            Text(name)
-                .font(.system(.title3, design: .rounded).weight(.bold))
-                .foregroundStyle(Palette.ink)
-
-            ZStack(alignment: .leading) {
-                Capsule().fill(.white.opacity(0.55))
-                GeometryReader { geo in
-                    Capsule()
-                        .fill(LinearGradient(colors: [Palette.honey, Palette.crust], startPoint: .leading, endPoint: .trailing))
-                        .frame(width: badgeInset + (geo.size.width - badgeInset) * CGFloat(progress.current) / CGFloat(max(progress.needed, 1)))
-                        .opacity(progress.current > 0 ? 1 : 0)
+            RoundButton(label: "More", action: onMore) {
+                HStack(spacing: 3.5) {
+                    ForEach(0..<3) { _ in Circle().fill(Palette.ink).frame(width: 6.4, height: 6.4) }
                 }
-                Text("\(progress.current) / \(progress.needed)")
-                    .font(.system(.caption, design: .rounded).weight(.bold))
-                    .foregroundStyle(Palette.ink.opacity(0.8))
-                    .frame(maxWidth: .infinity)
             }
-            .frame(width: 190, height: 22)
-            .overlay(alignment: .leading) {
-                Text("Lv \(bond.level)")
-                    .font(.system(.caption, design: .rounded).weight(.heavy))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 8)
-                    .frame(height: 28)
-                    .background(Capsule().fill(Palette.crust))
-                    .overlay(Capsule().stroke(.white, lineWidth: 2))
-                    .offset(x: -18)
-            }
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel("Friendship level \(bond.level), \(progress.current) of \(progress.needed)")
+            .padding(.leading, 10)
         }
     }
 }
 
-// MARK: - Bottom actions
-
-private struct ActionRow: View {
-    let canClaim: Bool
-    let onDressUp: () -> Void
-    let onClaim: () -> Void
-    let onMemories: () -> Void
-
-    var body: some View {
-        HStack(alignment: .bottom, spacing: 12) {
-            ActionCard(image: "ic_dressup", title: "Dress up", action: onDressUp)
-                .frame(width: 104)
-
-            Button(action: onClaim) {
-                VStack(spacing: 4) {
-                    Image("ic_claim")
-                        .resizable()
-                        .scaledToFit()
-                        .frame(height: 78)
-                        .shadow(color: Palette.honey.opacity(canClaim ? 0.9 : 0), radius: 18)
-                        .saturation(canClaim ? 1 : 0.3)
-                        .offset(y: -26)
-                        .padding(.bottom, -26)
-                    Text(canClaim ? "Daily treat" : "Claimed")
-                        .font(.system(.headline, design: .rounded).weight(.bold))
-                        .foregroundStyle(Palette.ink.opacity(canClaim ? 0.85 : 0.5))
-                    Text(canClaim ? "+\(PetStore.pointsPerTreat)" : "Back tomorrow")
-                        .font(.system(.subheadline, design: .rounded).weight(.semibold))
-                        .foregroundStyle(Palette.ink.opacity(0.55))
-                }
-                .padding(.vertical, 14)
-                .frame(maxWidth: .infinity)
-                .glass(RoundedRectangle(cornerRadius: 28, style: .continuous))
-            }
-            .buttonStyle(PressableStyle())
-            .disabled(!canClaim)
-
-            ActionCard(image: "ic_memories", title: "Memories", action: onMemories)
-                .frame(width: 104)
-        }
-    }
-}
-
-private struct ActionCard: View {
-    let image: String
-    let title: String
+private struct RoundButton<Content: View>: View {
+    let label: String
     let action: () -> Void
+    @ViewBuilder let content: Content
 
     var body: some View {
         Button(action: action) {
-            VStack(spacing: 6) {
+            content
+                .frame(width: 48, height: 48)
+                .chibiPanel(Circle(), shadow: 3)
+        }
+        .buttonStyle(PressableStyle())
+        .accessibilityLabel(label)
+    }
+}
+
+// MARK: - Today card
+
+/// What the day has logged by itself from Apple Health: sleep, workout, steps.
+private struct TodayCard: View {
+    let today: HealthSnapshot?
+    let tracker: DisciplineTracker
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text("TODAY").font(ChibiFont.title(17)).foregroundStyle(Palette.ink)
+                Text("auto-logged from Apple Health").font(ChibiFont.body(11)).foregroundStyle(Palette.inkSoft)
+            }
+            HStack(spacing: 4) {
+                sleepTile
+                workoutTile
+                stepsTile
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.top, 8)
+        .padding(.bottom, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .chibiPanel(RoundedRectangle(cornerRadius: 20, style: .continuous))
+    }
+
+    private var sleepTile: some View {
+        let onTime = today.flatMap(tracker.isOnTimeNight)
+        return StatTile(
+            icon: "ic_sleep", iconHeight: 24,
+            value: today?.sleepOnset?.formatted(date: .omitted, time: .shortened) ?? "—",
+            caption: onTime == nil ? "No sleep data" : (onTime! ? "On-time sleep" : "Late night"),
+            done: onTime == true
+        )
+    }
+
+    private var workoutTile: some View {
+        let counts = today.map(tracker.countsAsWorkout) ?? false
+        let minutes = Int(today?.workoutMinutes ?? 0)
+        let value: String
+        let caption: String
+        if minutes > 0 {
+            value = "\(minutes) min"
+            caption = today?.workoutType ?? "Workout"
+        } else if counts {
+            value = "10k+"
+            caption = "Active day"
+        } else {
+            value = "—"
+            caption = "No workout yet"
+        }
+        return StatTile(icon: "ic_workout", iconHeight: 22, value: value, caption: caption, done: counts)
+    }
+
+    private var stepsTile: some View {
+        let steps = today?.steps ?? 0
+        return StatTile(
+            icon: "ic_steps", iconHeight: 16,
+            value: steps.formatted(), caption: "Steps", done: false,
+            progress: min(Double(steps) / Double(tracker.rules.activeDaySteps), 1)
+        )
+    }
+}
+
+private struct StatTile: View {
+    let icon: String
+    let iconHeight: CGFloat
+    let value: String
+    let caption: String
+    let done: Bool
+    var progress: Double?
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(icon).resizable().scaledToFit().frame(width: 30, height: iconHeight)
+            VStack(alignment: .leading, spacing: 0) {
+                Text(value)
+                    .font(ChibiFont.title(16))
+                    .foregroundStyle(Palette.ink)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                Text(caption)
+                    .font(ChibiFont.body(10.5))
+                    .foregroundStyle(Palette.inkSoft)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                if let progress {
+                    ProgressPill(value: progress).padding(.top, 2)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.leading, 6)
+        .padding(.trailing, 4)
+        .frame(maxWidth: .infinity, minHeight: 50)
+        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Palette.creamDeep))
+        .overlay(alignment: .topTrailing) {
+            if done { CheckBadge().offset(x: -4, y: 4) }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityValue(done ? "Done" : "")
+    }
+}
+
+private struct ProgressPill: View {
+    let value: Double
+
+    var body: some View {
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                Capsule().fill(Palette.empty)
+                Capsule().fill(Palette.mint).frame(width: geo.size.width * value)
+            }
+            .overlay(Capsule().strokeBorder(Palette.ink, lineWidth: 1.2))
+        }
+        .frame(height: 6)
+    }
+}
+
+private struct CheckBadge: View {
+    var body: some View {
+        Image(systemName: "checkmark")
+            .font(.system(size: 7.5, weight: .black))
+            .foregroundStyle(.white)
+            .frame(width: 15, height: 15)
+            .background(Circle().fill(Palette.mintDeep))
+            .overlay(Circle().strokeBorder(Palette.ink, lineWidth: 2))
+    }
+}
+
+// MARK: - Week strip
+
+/// This week's 自律周: workouts out of 3 and on-time nights out of 5.
+private struct WeekStrip: View {
+    let week: WeekProgress?
+    let weekInBlock: Int
+
+    var body: some View {
+        let rules = week?.rules ?? .standard
+        HStack(spacing: 8) {
+            Image("ic_trophy").resizable().scaledToFit().frame(height: 36)
+            Text("Week \(weekInBlock)/\(rules.weeksPerBlock)")
+                .font(ChibiFont.title(15))
+                .foregroundStyle(Palette.ink)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+            Spacer(minLength: 4)
+            Segments(label: "Workouts", total: rules.workoutsPerWeek, done: week?.workouts ?? 0, color: Palette.coral)
+            Segments(label: "Nights", total: rules.onTimeNightsPerWeek, done: week?.onTimeNights ?? 0, color: Palette.lavender)
+                .padding(.leading, 6)
+        }
+        .padding(.leading, 12)
+        .padding(.trailing, 14)
+        .frame(height: 44)
+        .chibiPanel(Capsule(), shadow: 3)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Week \(weekInBlock) of \(rules.weeksPerBlock). Workouts \(min(week?.workouts ?? 0, rules.workoutsPerWeek)) of \(rules.workoutsPerWeek), on-time nights \(min(week?.onTimeNights ?? 0, rules.onTimeNightsPerWeek)) of \(rules.onTimeNightsPerWeek).")
+    }
+}
+
+private struct Segments: View {
+    let label: String
+    let total: Int
+    let done: Int
+    let color: Color
+
+    var body: some View {
+        HStack(spacing: 3) {
+            Text(label).font(ChibiFont.bold(11)).foregroundStyle(Palette.inkSoft).fixedSize().padding(.trailing, 2)
+            ForEach(0..<total, id: \.self) { i in
+                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                    .fill(i < done ? color : Palette.empty)
+                    .overlay(RoundedRectangle(cornerRadius: 3, style: .continuous).strokeBorder(Palette.ink, lineWidth: 1.6))
+                    .frame(width: 9, height: 12)
+            }
+        }
+    }
+}
+
+// MARK: - Dock
+
+private struct Dock: View {
+    let open: (HomeSheet) -> Void
+
+    var body: some View {
+        HStack(alignment: .bottom, spacing: 10) {
+            DockButton(image: "ic_pets", title: "Pets") { open(.pets) }
+            DockButton(image: "ic_dressup", title: "Dress up") { open(.dressUp) }
+            DockButton(image: "ic_today", title: "Today", primary: true) { open(.today) }
+            DockButton(image: "ic_memories", title: "Memories") { open(.memories) }
+            DockButton(image: "ic_share", title: "Share") { open(.share) }
+        }
+    }
+}
+
+private struct DockButton: View {
+    let image: String
+    let title: String
+    var primary = false
+    let action: () -> Void
+
+    var body: some View {
+        let size: CGFloat = primary ? 82 : 62
+        Button(action: action) {
+            VStack(spacing: 4) {
                 Image(image)
                     .resizable()
                     .scaledToFit()
-                    .frame(height: 52)
-                    .offset(y: -18)
-                    .padding(.bottom, -18)
-                Text(title)
-                    .font(.system(.subheadline, design: .rounded).weight(.bold))
-                    .foregroundStyle(Palette.ink.opacity(0.85))
+                    .frame(height: size * (primary ? 0.86 : 0.84))
+                    .offset(y: -3)
+                    .frame(width: size, height: size)
+                    .chibiPanel(RoundedRectangle(cornerRadius: primary ? 22 : 18, style: .continuous),
+                                fill: primary ? Palette.butter : Palette.cream, shadow: 5)
+                OutlinedText(text: title, font: ChibiFont.title(primary ? 15 : 13.5))
+                    .fixedSize()
+                    .padding(.top, 4)
             }
-            .padding(.vertical, 14)
-            .frame(maxWidth: .infinity)
-            .glass(RoundedRectangle(cornerRadius: 24, style: .continuous))
         }
         .buttonStyle(PressableStyle())
-    }
-}
-
-private struct MoreHandle: View {
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 6) {
-                Image(systemName: "chevron.up.circle.fill")
-                Text("More")
-            }
-            .font(.system(.subheadline, design: .rounded).weight(.semibold))
-            .foregroundStyle(Palette.ink.opacity(0.6))
-            .frame(maxWidth: .infinity)
-            .padding(.top, 16)
-            .padding(.bottom, 28)
-            .background(
-                UnevenRoundedRectangle(topLeadingRadius: 36, topTrailingRadius: 36, style: .continuous)
-                    .fill(.white.opacity(0.3))
-                    .ignoresSafeArea(edges: .bottom)
-            )
-        }
-        .buttonStyle(.plain)
     }
 }
 

@@ -1,10 +1,10 @@
 import SwiftUI
 import PetCore
 
-/// v1 character 「面包人」: a slice of toast. Art from the final state sheet
-/// (character/toast-final-v1-wink.png), cut into one image per mood.
+/// 「面包人」: a slice of toast, the tutorial guide. Side-facing chibi art (template v2);
+/// moods show through the bubble line and motion until the expression layer lands.
 struct ToastSkin: CharacterSkin {
-    let id = "toast-v1"
+    let id = "toast-v2"
     let displayName = "Toast"
 
     func makeView(state: PetState) -> AnyView {
@@ -20,10 +20,6 @@ struct ToastSkin: CharacterSkin {
         case .fresh:  return "Fresh out of the toaster! Fully charged."
         }
     }
-
-    static func imageName(for mood: PetMood) -> String {
-        "toast_\(mood.rawValue)"
-    }
 }
 
 private struct ToastView: View {
@@ -31,7 +27,7 @@ private struct ToastView: View {
     @State private var bob = false
 
     var body: some View {
-        Image(ToastSkin.imageName(for: state.mood))
+        Image(RosterPet.toast.image)
             .resizable()
             .scaledToFit()
             .saturation(state.isAsleep ? 0.4 : 1)
