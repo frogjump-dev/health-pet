@@ -444,6 +444,8 @@ private struct WeekStrip: View {
             Text("Week \(weekInBlock)/\(rules.weeksPerBlock)")
                 .font(ChibiFont.title(15))
                 .foregroundStyle(Palette.ink)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
             Spacer(minLength: 4)
             Segments(label: "Workouts", total: rules.workoutsPerWeek, done: week?.workouts ?? 0, color: Palette.coral)
             Segments(label: "Nights", total: rules.onTimeNightsPerWeek, done: week?.onTimeNights ?? 0, color: Palette.lavender)
@@ -466,7 +468,7 @@ private struct Segments: View {
 
     var body: some View {
         HStack(spacing: 3) {
-            Text(label).font(ChibiFont.bold(11)).foregroundStyle(Palette.inkSoft).padding(.trailing, 2)
+            Text(label).font(ChibiFont.bold(11)).foregroundStyle(Palette.inkSoft).fixedSize().padding(.trailing, 2)
             ForEach(0..<total, id: \.self) { i in
                 RoundedRectangle(cornerRadius: 3, style: .continuous)
                     .fill(i < done ? color : Palette.empty)
