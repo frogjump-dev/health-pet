@@ -151,11 +151,11 @@ struct ShareView: View {
             return .init(
                 ribbon: done ? "DISCIPLINE WEEK ✓" : "THIS WEEK",
                 lead: "I'm \(article(identity)) ", title: identity, pets: pets,
+                // Steps have no weekly goal, so without numbers there is nothing to tick: the column goes.
                 stats: [
                     stat(workouts, "workouts", met: workouts >= rules.workoutsPerWeek, color: .workout),
                     stat(nights, "on-time nights", met: nights >= rules.onTimeNightsPerWeek, color: .sleep),
-                    .init(value: showNumbers ? shortSteps(model.weekSteps) : "✓", label: "steps", color: .steps),
-                ],
+                ] + (showNumbers ? [.init(value: shortSteps(model.weekSteps), label: "steps", color: .steps)] : []),
                 footer: footer)
 
         case .today:
@@ -181,7 +181,9 @@ struct ShareView: View {
             return .init(
                 ribbon: "MY BREAKFAST CREW", lead: "Raised with ", title: model.mainPet.name, pets: pets,
                 stats: [
-                    .init(value: "\(model.ownedPets.count)", label: "pets", color: .steps),
+                    // Same count as the Pets page: Toast the guide isn't one of the 16.
+                    .init(value: "\(RosterPet.roster.filter { pet in model.ownedPets.contains(pet) }.count)",
+                          label: "pets baked", color: .steps),
                     .init(value: "\(model.disciplinedWeekCount)", label: "discipline weeks", color: .workout),
                     .init(value: "\(model.daysTogether)", label: "days together", color: .sleep),
                 ],
