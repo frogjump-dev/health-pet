@@ -56,6 +56,8 @@ struct ShareView: View {
                         .padding(.top, 24)
                     }
                 }
+                // Full width even without the switches panel, so the buttons below don't shrink.
+                .frame(maxWidth: .infinity)
                 .padding(.horizontal, 16)
                 .padding(.bottom, 100)
             }
@@ -284,7 +286,7 @@ struct ShareCard: View {
                 ForEach(content.stats.indices, id: \.self) { i in
                     let stat = content.stats[i]
                     VStack(spacing: 0) {
-                        Text(stat.value).font(ChibiFont.title(24)).foregroundStyle(stat.color.color)
+                        statValue(stat).frame(height: 30)
                         Text(stat.label).font(ChibiFont.body(10.5)).foregroundStyle(Palette.inkSoft)
                     }
                     .frame(maxWidth: .infinity)
@@ -314,6 +316,26 @@ struct ShareCard: View {
         .padding(.bottom, 5)
     }
 
+    /// "✓" and "–" have no glyph in the game font and fall back to a thin system one,
+    /// so they're drawn as heavy symbols that match the chunky numbers.
+    @ViewBuilder
+    private func statValue(_ stat: Stat) -> some View {
+        switch stat.value {
+        case "✓":
+            Image(systemName: "checkmark").font(.system(size: 22, weight: .black)).foregroundStyle(stat.color.color)
+        case "–":
+            Capsule().fill(Palette.empty).frame(width: 18, height: 5)
+        default:
+            Text(stat.value).font(ChibiFont.title(24)).foregroundStyle(stat.color.color)
+        }
+    }
+
+    private var ribbon: Text {
+        guard content.ribbon.hasSuffix(" ✓") else { return Text(content.ribbon) }
+        return Text(content.ribbon.dropLast(2)) + Text(" ")
+            + Text(Image(systemName: "checkmark")).font(.system(size: 16, weight: .black))
+    }
+
     private var scene: some View {
         ZStack(alignment: .bottom) {
             // Zoom into the rug so the pets stand on it: shows roughly 28%–61% of the picture's height.
@@ -324,6 +346,9 @@ struct ShareCard: View {
                 .offset(y: 37)
                 .frame(width: 300, height: 220)
                 .clipped()
+                // clipped() only trims the drawing: without this the full 675 pt picture
+                // swallows taps on the template chips and switches around the card.
+                .allowsHitTesting(false)
 
             HStack(alignment: .bottom, spacing: -6) {
                 ForEach(Array(content.pets.enumerated()), id: \.element.id) { index, pet in
@@ -336,7 +361,7 @@ struct ShareCard: View {
                 }
             }
 
-            Text(content.ribbon)
+            ribbon
                 .font(ChibiFont.title(20))
                 .foregroundStyle(Palette.ink)
                 .padding(.horizontal, 14)
