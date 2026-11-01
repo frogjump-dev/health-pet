@@ -104,6 +104,10 @@ struct ChibiButton: View {
                     if let detail { Text(detail).font(ChibiFont.title(15)).foregroundStyle(Palette.inkSoft) }
                 }
             }
+            // One line on every phone: long details shrink instead of wrapping out of the button.
+            .lineLimit(1)
+            .minimumScaleFactor(0.75)
+            .padding(.horizontal, 12)
             .frame(maxWidth: .infinity)
             .frame(height: height)
             .chibiPanel(RoundedRectangle(cornerRadius: height < 50 ? 14 : 18, style: .continuous),

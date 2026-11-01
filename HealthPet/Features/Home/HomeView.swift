@@ -33,8 +33,15 @@ struct HomeView: View {
                 Spacer(minLength: 0)
 
                 VStack(spacing: 14) {
-                    TodayCard(today: model.today, tracker: model.discipline)
-                    WeekStrip(week: model.week, weekInBlock: model.weekInBlock)
+                    // Both summaries are a way into the full Today page, like the big dock button.
+                    Button { open(.today) } label: {
+                        VStack(spacing: 14) {
+                            TodayCard(today: model.today, tracker: model.discipline)
+                            WeekStrip(week: model.week, weekInBlock: model.weekInBlock)
+                        }
+                    }
+                    .buttonStyle(PressableStyle())
+                    .accessibilityHint("Opens Today")
                     Dock { open($0) }
                         .padding(.top, 6)
                 }
