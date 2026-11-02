@@ -37,7 +37,7 @@ public enum Activity: String, Codable, Sendable, CaseIterable, Identifiable {
         case .ballSports: "Ball sports"
         case .climbing: "Climbing"
         case .other: "All-rounder"
-        case .recoveryMatch: "Listening to your body"
+        case .recoveryMatch: "Balanced day"
         case .sleepNeedMet: "Sleep need met"
         case .highStrain: "High strain"
         }
