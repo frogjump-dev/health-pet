@@ -30,6 +30,8 @@ final class AppModel {
     private(set) var recoveryBonus = false
     /// On-time nights in a row, up to last night.
     private(set) var onTimeStreak = 0
+    /// Each activity's sessions, experience and unlock day; one entry per activity.
+    private(set) var activityProgress: [Activity: ActivityProgress] = [:]
     private(set) var isLoading = false
     private(set) var whoopStatus: WhoopStatus
     /// HealthKit never reveals whether read access was granted, so this only records that
@@ -95,28 +97,37 @@ final class AppModel {
     var daysTogether: Int { store.daysTogether }
     var canClaimTreat: Bool { store.canClaimTreat }
 
-    /// Pets the user has. TODO: the starter four stand in until baking (出炉券) is built.
-    var ownedPets: [RosterPet] { RosterPet.starters }
+    /// Pets the user has: Toast, plus every pet whose activity has been done at least once.
+    var ownedPets: [RosterPet] {
+        [.toast] + RosterPet.roster.filter { pet in pet.activity.map { progress(for: $0).isUnlocked } ?? false }
+    }
+
+    func progress(for activity: Activity) -> ActivityProgress {
+        activityProgress[activity] ?? ActivityProgress(activity: activity, sessions: 0, experience: 0, unlockedOn: nil)
+    }
+
+    /// Unlocked pets, highest level first: the user's sports identity on share cards.
+    var topPets: [(pet: RosterPet, progress: ActivityProgress)] {
+        RosterPet.roster.compactMap { pet in pet.activity.map { (pet: pet, progress: progress(for: $0)) } }
+            .filter { $0.progress.isUnlocked }
+            .sorted { ($0.progress.experience, $0.progress.sessions) > ($1.progress.experience, $1.progress.sessions) }
+    }
 
     /// The pet in the middle of the room, in the top bar and on share cards.
     var mainPetID: String {
         didSet { defaults.set(mainPetID, forKey: Keys.mainPetID) }
     }
 
+    /// Only pets with kitchen art can stand in the room, so only they can be the main pet.
     var mainPet: RosterPet {
-        ownedPets.first { $0.id == mainPetID } ?? .toast
+        ownedPets.first { $0.id == mainPetID && $0.image != nil } ?? .toast
     }
 
-    /// The pets standing in the room, main pet first.
+    /// The pets standing in the room, main pet first. Pets whose art isn't drawn yet stay
+    /// in the Pets page until it is.
     var homePets: [RosterPet] {
-        [mainPet] + ownedPets.filter { $0.id != mainPet.id }
+        [mainPet] + ownedPets.filter { $0.id != mainPet.id && $0.image != nil }
     }
-
-    /// Unspent 出炉券: one per finished 自律周. TODO: subtract pets baked once baking exists.
-    var bakeTickets: Int { store.disciplinedWeeks.count }
-
-    /// Evolution stage reached with the user's cumulative 自律周 (0 = starting look).
-    var evolutionStage: Int { Evolution.stage(forDisciplinedWeeks: disciplinedWeekCount) }
 
     /// The user's most frequent workout this week, e.g. "Run", for titles on share cards.
     var favouriteWorkout: String? {
@@ -128,6 +139,10 @@ final class AppModel {
 
     var discipline: DisciplineTracker {
         DisciplineTracker(bedtime: Bedtime(hour: sleepSchedule.bedtimeHour))
+    }
+
+    var activityTracker: ActivityTracker {
+        ActivityTracker(discipline: discipline, wakeTarget: WakeTime(hour: sleepSchedule.wakeHour))
     }
 
     /// Which week of the current 4-week achievement block this is (1...4), counted from adoption.
@@ -272,9 +287,17 @@ final class AppModel {
             recoveryBonus = false
         }
         onTimeStreak = tracker.onTimeStreak(snapshots)
+        let finishedWeeks = tracker.disciplinedWeeks(in: snapshots, before: now)
+        let log = activityTracker.log(snapshots, today: todayStart)
         if recordMemories && dataMode == .live {
-            store.recordDisciplinedWeeks(tracker.disciplinedWeeks(in: snapshots, before: now))
+            store.recordDisciplinedWeeks(finishedWeeks)
+            store.recordActivities(log)
         }
+        // Live: everything ever recorded. Demo: only the generated days, never saved.
+        let (allLog, allWeeks) = dataMode == .live
+            ? (store.activityLog.merging(log) { $0.union($1) }, store.disciplinedWeeks.union(finishedWeeks))
+            : (log, Set(finishedWeeks))
+        activityProgress = ActivityProgress.all(log: allLog, disciplinedWeeks: allWeeks, weekStart: tracker.weekStart(for:))
 
         if recordMemories {
             store.addMemories(memoryDetector.newMemories(today: todaySnapshot, history: history,

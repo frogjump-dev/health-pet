@@ -24,15 +24,23 @@ struct DemoHealthProvider: HealthDataProvider {
             let lateNight = shortNight || Int.random(in: 0..<5, using: &generator) == 0
             let onsetMinute = lateNight ? Int.random(in: 30...90, using: &generator) : Int.random(in: -30...20, using: &generator)
             let workedOut = Int.random(in: 0..<2, using: &generator) == 0
+            let workoutMinutes = Double.random(in: 22...50, using: &generator)
+            let workoutType = ["Run", "Run", "Yoga", "Strength", "Ride"].randomElement(using: &generator)!
+            // Up most mornings by 07:00, now and then a lie-in; a short meditation a couple of times a week.
+            let wakeMinute = Int.random(in: -40...25, using: &generator)
+            let meditated = Int.random(in: 0..<3, using: &generator) == 0
             result.append(HealthSnapshot(
                 day: day, source: .mock,
-                steps: Int.random(in: 6_000...10_000, using: &generator),
+                steps: Int.random(in: 6_000...12_500, using: &generator),
                 sleepHours: shortNight ? 5 : Double.random(in: 7...8, using: &generator),
                 hrvMs: Double.random(in: 45...55, using: &generator), hrvMethod: .sdnn,
                 restingHeartRate: Double.random(in: 58...62, using: &generator),
                 sleepOnset: Self.onset(nightEnding: day, minutesAfter11pm: onsetMinute),
-                workoutMinutes: workedOut ? Double.random(in: 22...50, using: &generator) : nil,
-                workoutType: workedOut ? ["Run", "Yoga", "Strength", "Ride"].randomElement(using: &generator) : nil
+                workoutMinutes: workedOut ? workoutMinutes : nil,
+                workoutType: workedOut ? workoutType : nil,
+                workouts: workedOut ? [WorkoutSession(name: workoutType, minutes: workoutMinutes)] : [],
+                wakeTime: Self.wake(day: day, minutesAfter7am: wakeMinute),
+                mindfulMinutes: meditated ? 10 : nil
             ))
             day = calendar.date(byAdding: .day, value: 1, to: day)!
         }
@@ -43,14 +51,20 @@ struct DemoHealthProvider: HealthDataProvider {
     private func todaySnapshot(day: Date) -> HealthSnapshot {
         switch scenario {
         case .golden: HealthSnapshot(day: day, source: .mock, steps: 8_214, sleepHours: 7.5, hrvMs: 50, hrvMethod: .sdnn, restingHeartRate: 60,
-                                     sleepOnset: Self.onset(nightEnding: day, minutesAfter11pm: 5), workoutMinutes: 32, workoutType: "Run")
+                                     sleepOnset: Self.onset(nightEnding: day, minutesAfter11pm: 5), workoutMinutes: 32, workoutType: "Run",
+                                     workouts: [WorkoutSession(name: "Run", minutes: 32)], wakeTime: Self.wake(day: day, minutesAfter7am: -15))
         case .burnt:  HealthSnapshot(day: day, source: .mock, steps: 5_000, sleepHours: 4.5, hrvMs: 48, hrvMethod: .sdnn, restingHeartRate: 62,
                                      sleepOnset: Self.onset(nightEnding: day, minutesAfter11pm: 150))
         case .soggy:  HealthSnapshot(day: day, source: .mock, steps: 3_000, sleepHours: 7.2, hrvMs: 30, hrvMethod: .sdnn, restingHeartRate: 68,
                                      sleepOnset: Self.onset(nightEnding: day, minutesAfter11pm: -10))
         case .fresh:  HealthSnapshot(day: day, source: .mock, steps: 12_000, sleepHours: 8.3, hrvMs: 68, hrvMethod: .sdnn, restingHeartRate: 55,
-                                     sleepOnset: Self.onset(nightEnding: day, minutesAfter11pm: -40), workoutMinutes: 45, workoutType: "Yoga")
+                                     sleepOnset: Self.onset(nightEnding: day, minutesAfter11pm: -40), workoutMinutes: 45, workoutType: "Yoga",
+                                     workouts: [WorkoutSession(name: "Yoga", minutes: 45)], wakeTime: Self.wake(day: day, minutesAfter7am: -30))
         }
+    }
+
+    private static func wake(day: Date, minutesAfter7am minutes: Int) -> Date {
+        Calendar.current.date(bySettingHour: 7, minute: 0, second: 0, of: day)!.addingTimeInterval(TimeInterval(minutes * 60))
     }
 
     private static func onset(nightEnding day: Date, minutesAfter11pm minutes: Int) -> Date {

@@ -1,12 +1,12 @@
 import SwiftUI
 import PetCore
 
-/// Pets 图鉴: the 16 breakfast pets by family. Pets you have show their art; the rest are
-/// "?" cards until they're baked with a 出炉券 earned from a 自律周.
+/// Pets 图鉴: the breakfast pets (and the Whoop-only Supply Squad) by family. Each pet is bound to one activity: do it once
+/// to unlock the pet, and its level shows how much of it you've done. Locked pets show the
+/// activity that unlocks them.
 struct PetsView: View {
     @Environment(AppModel.self) private var model
     @State private var selectedID: String?
-    @State private var showBakeInfo = false
 
     private static let featuredID = "featured"
 
@@ -15,44 +15,43 @@ struct PetsView: View {
 
     var body: some View {
         let ownedCount = RosterPet.roster.filter { owned.contains($0.id) }.count
-        ChibiPage(title: "Pets", subtitle: "\(ownedCount) of \(RosterPet.roster.count) baked") {
-            HStack(spacing: 5) {
-                TicketGlyph()
-                Text("×\(model.bakeTickets)").font(ChibiFont.title(15)).foregroundStyle(Palette.ink)
+        ChibiPage(title: "Pets", subtitle: "\(ownedCount) of \(RosterPet.roster.count) unlocked") {
+            if let top = model.topPets.first {
+                HStack(spacing: 4) {
+                    Image(systemName: "star.fill").font(.system(size: 12, weight: .black))
+                    Text("Top Lv \(top.progress.level)").font(ChibiFont.title(15))
+                }
+                .foregroundStyle(Palette.ink)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 3)
+                .background(Capsule().fill(Palette.butter))
+                .overlay(Capsule().strokeBorder(Palette.ink, lineWidth: 2.5))
+                .accessibilityLabel("Highest level \(top.progress.level), \(top.pet.name)")
             }
-            .padding(.horizontal, 9)
-            .padding(.vertical, 3)
-            .background(Capsule().fill(Color(red: 1, green: 0.90, blue: 0.63)))
-            .overlay(Capsule().strokeBorder(Palette.ink, lineWidth: 2.5))
-            .accessibilityLabel("\(model.bakeTickets) bake tickets")
         } content: {
             ScrollViewReader { scroller in
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
-                        FeaturedPet(pet: selected, weeks: model.disciplinedWeekCount)
+                        FeaturedPet(pet: selected,
+                                    progress: selected.activity.map(model.progress(for:)),
+                                    have: owned.contains(selected.id))
                             .padding(.top, 12)
                             .id(Self.featuredID)
-                        if selected.id == model.mainPet.id {
-                            Label("Main pet · stands in the middle of your kitchen", systemImage: "star.fill")
-                                .font(ChibiFont.bold(12))
-                                .foregroundStyle(Palette.inkSoft)
-                                .frame(maxWidth: .infinity)
-                                .frame(height: 38)
-                                .padding(.top, 10)
-                        } else {
-                            ChibiButton(title: "Set as main pet", primary: false, height: 38) {
-                                model.mainPetID = selected.id
-                            }
-                            .padding(.top, 10)
-                        }
+                        mainPetRow.padding(.top, 10)
 
                         ForEach(PetFamily.allCases) { family in
                             section(family)
                         }
                         guideRow
+                        Text("A day counts once per activity. Sessions in a Discipline Week earn double.")
+                            .font(ChibiFont.body(12))
+                            .foregroundStyle(Palette.inkSoft)
+                            .frame(maxWidth: .infinity)
+                            .multilineTextAlignment(.center)
+                            .padding(.top, 18)
                     }
                     .padding(.horizontal, 16)
-                    .padding(.bottom, 100)
+                    .padding(.bottom, 40)
                 }
                 .scrollIndicators(.hidden)
                 // Picking a pet further down brings its big card into view.
@@ -60,28 +59,31 @@ struct PetsView: View {
                     withAnimation(.easeInOut(duration: 0.3)) { scroller.scrollTo(Self.featuredID, anchor: .top) }
                 }
             }
-            .overlay(alignment: .bottom) {
-                // Bright yellow only when there's a ticket to spend.
-                ChibiButton(title: "Bake a new friend",
-                            detail: model.bakeTickets > 0
-                                ? "· \(model.bakeTickets) ticket\(model.bakeTickets == 1 ? "" : "s")"
-                                : "· finish a Discipline Week",
-                            primary: model.bakeTickets > 0) {
-                    showBakeInfo = true
-                }
-                .padding(.horizontal, 16)
-                .padding(.top, 30)
-                .padding(.bottom, 8)
-                .background(LinearGradient(colors: [Color(red: 0.94, green: 0.81, blue: 0.61).opacity(0),
-                                                     Color(red: 0.94, green: 0.81, blue: 0.61)],
-                                           startPoint: .top, endPoint: .center))
+        }
+    }
+
+    @ViewBuilder
+    private var mainPetRow: some View {
+        let have = owned.contains(selected.id) || selected.family == nil
+        if selected.id == model.mainPet.id {
+            note("Main pet · stands in the middle of your kitchen", icon: "star.fill")
+        } else if !have {
+            note("Not unlocked yet · do it once and it's yours", icon: "lock.fill")
+        } else if selected.image == nil {
+            note("Moves into your kitchen when its art is ready", icon: "paintbrush.fill")
+        } else {
+            ChibiButton(title: "Set as main pet", primary: false, height: 38) {
+                model.mainPetID = selected.id
             }
         }
-        .alert("Baking opens soon", isPresented: $showBakeInfo) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text("Every Discipline Week gives you a bake ticket. Soon you can spend it here to bake a new friend from the family you pick.")
-        }
+    }
+
+    private func note(_ text: String, icon: String) -> some View {
+        Label(text, systemImage: icon)
+            .font(ChibiFont.bold(12))
+            .foregroundStyle(Palette.inkSoft)
+            .frame(maxWidth: .infinity)
+            .frame(height: 38)
     }
 
     private func section(_ family: PetFamily) -> some View {
@@ -97,6 +99,8 @@ struct PetsView: View {
                 ForEach(pets) { pet in
                     card(pet, family: family)
                 }
+                // Keep card widths the same in shorter rows (the Whoop family has three).
+                ForEach(pets.count..<4, id: \.self) { _ in Color.clear.frame(maxWidth: .infinity, maxHeight: 1) }
             }
         }
         .padding(.top, 14)
@@ -120,27 +124,41 @@ struct PetsView: View {
     @ViewBuilder
     private func card(_ pet: RosterPet, family: PetFamily?) -> some View {
         let have = pet.family == nil || owned.contains(pet.id)
+        let level = pet.activity.map { model.progress(for: $0).level } ?? 0
         let isSelected = pet.id == selected.id
         let shape = RoundedRectangle(cornerRadius: 16, style: .continuous)
         Button {
-            if have { selectedID = pet.id }
+            selectedID = pet.id
         } label: {
             VStack(spacing: 0) {
                 ZStack {
                     if have, let image = pet.image {
                         Image(image).resizable().scaledToFit().padding(.top, 5).padding(.horizontal, 4)
-                    } else if have {
-                        Image(pet.art).resizable().scaledToFit().padding(.top, 5).padding(.horizontal, 4)
                     } else {
-                        Text("?").font(ChibiFont.title(38)).foregroundStyle(Color(red: 0.73, green: 0.66, blue: 0.56))
+                        // Locked, or unlocked before its art is drawn: the activity stands in.
+                        Image(systemName: pet.activity?.symbol ?? "questionmark")
+                            .font(.system(size: 30, weight: .bold))
+                            .foregroundStyle(have ? Palette.ink : Color(red: 0.73, green: 0.66, blue: 0.56))
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                Text(have ? pet.name : pet.mbti)
+                .overlay(alignment: .topTrailing) {
+                    if have && level > 0 {
+                        Text("Lv\(level)")
+                            .font(ChibiFont.title(10))
+                            .foregroundStyle(Palette.ink)
+                            .padding(.horizontal, 4)
+                            .background(Capsule().fill(Palette.butter))
+                            .overlay(Capsule().strokeBorder(Palette.ink, lineWidth: 1.5))
+                            .padding(4)
+                    }
+                }
+                Text(have ? pet.name : (pet.activity?.title ?? "?"))
                     .font(ChibiFont.bold(10.5))
                     .foregroundStyle(have ? Palette.ink : Palette.inkSoft)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.7)
+                    .minimumScaleFactor(0.55)
+                    .padding(.horizontal, 5)
                     .padding(.vertical, 3)
                     .frame(maxWidth: .infinity)
                     .background(have ? Palette.cream : Color(red: 0.87, green: 0.82, blue: 0.72))
@@ -158,48 +176,60 @@ struct PetsView: View {
             }
         }
         .buttonStyle(PressableStyle())
-        .disabled(!have)
         .frame(maxWidth: .infinity)
-        .accessibilityLabel(have ? pet.name : "Not baked yet, \(pet.mbti)")
+        .accessibilityLabel(have ? "\(pet.name), level \(level)" : "Locked. \(pet.activity?.unlockHint ?? "")")
     }
 }
 
-/// The selected pet, big: family, MBTI and how far it is along the 3 evolution stages.
+/// The selected pet, big: its activity, level, progress to the next level and the day it
+/// was unlocked (its 出炉证书 date, to remember when you started). Locked pets show how to get them.
 private struct FeaturedPet: View {
     let pet: RosterPet
-    let weeks: Int
+    /// nil for Toast, who has no activity.
+    let progress: ActivityProgress?
+    let have: Bool
 
     var body: some View {
-        let stage = Evolution.stage(forDisciplinedWeeks: weeks)
         HStack(spacing: 10) {
             ZStack(alignment: .bottom) {
                 Ellipse().fill(Palette.ink.opacity(0.15)).frame(width: 104, height: 24)
-                Image(pet.art).resizable().scaledToFit().frame(height: 142).padding(.bottom, 6)
+                if have || pet.family == nil, let image = pet.image {
+                    Image(image).resizable().scaledToFit().frame(height: 142).padding(.bottom, 6)
+                } else {
+                    Image(systemName: pet.activity?.symbol ?? "questionmark")
+                        .font(.system(size: 58, weight: .bold))
+                        .foregroundStyle(have ? Palette.ink : Color(red: 0.73, green: 0.66, blue: 0.56))
+                        .frame(height: 142)
+                        .padding(.bottom, 6)
+                }
             }
             .frame(width: 118)
 
             VStack(alignment: .leading, spacing: 0) {
-                Text(pet.name).font(ChibiFont.title(24)).foregroundStyle(Palette.ink)
+                Text(have || pet.family == nil ? pet.name : "Locked")
+                    .font(ChibiFont.title(24)).foregroundStyle(Palette.ink)
                     .lineLimit(1).minimumScaleFactor(0.7)
                 HStack(spacing: 5) {
-                    if let family = pet.family {
-                        ChibiChip(text: family.className, fill: family.tint)
-                        ChibiChip(text: pet.mbti)
+                    if let activity = pet.activity {
+                        ChibiChip(text: activity.title, fill: pet.family?.tint ?? Palette.cream)
+                        ChibiChip(text: pet.mbti.isEmpty ? "Whoop" : pet.mbti)
                     } else {
                         ChibiChip(text: "Your guide", fill: Palette.honey)
                     }
                 }
                 .padding(.top, 5)
-                // One line for every pet so the card keeps its height when the selection changes.
-                Text(pet.family.map { $0.tagline.capitalizedFirst } ?? "Shows you around the kitchen")
-                    .font(ChibiFont.body(12)).foregroundStyle(Palette.ink)
+
+                // Same number of lines for every pet so the card keeps its height when the selection changes.
+                Text(lines.0).font(ChibiFont.body(12)).foregroundStyle(Palette.ink)
                     .lineLimit(1).minimumScaleFactor(0.8)
                     .padding(.top, 7)
-                Text(stage == 0 ? Self.stageName(0) : "Stage \(stage) · \(Self.stageName(stage))")
-                    .font(ChibiFont.body(12)).foregroundStyle(Palette.inkSoft)
+                Text(lines.1).font(ChibiFont.body(12)).foregroundStyle(Palette.inkSoft)
+                    .lineLimit(1).minimumScaleFactor(0.8)
                     .padding(.top, 6)
-                StageTrack(weeks: weeks).padding(.top, 4)
-                Text(nextLine).font(ChibiFont.body(12)).foregroundStyle(Palette.inkSoft)
+                LevelBar(level: progress?.level ?? 0, fraction: progress?.levelFraction ?? 0)
+                    .padding(.top, 4)
+                    .opacity(progress == nil ? 0 : 1)
+                Text(lines.2).font(ChibiFont.body(12)).foregroundStyle(Palette.inkSoft)
                     .lineLimit(1).minimumScaleFactor(0.8)
                     .padding(.top, 3)
             }
@@ -208,53 +238,51 @@ private struct FeaturedPet: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
         .chibiPanel(RoundedRectangle(cornerRadius: 20, style: .continuous),
-                    fill: pet.family?.tint ?? Palette.creamDeep)
+                    fill: have || pet.family == nil ? (pet.family?.tint ?? Palette.creamDeep) : Color(red: 0.91, green: 0.86, blue: 0.78))
     }
 
-    static func stageName(_ stage: Int) -> String {
-        ["Fresh out of the oven", "Food Buddy", "Apprentice", "Hero"][min(max(stage, 0), 3)]
-    }
-
-    private var nextLine: String {
-        let stage = Evolution.stage(forDisciplinedWeeks: weeks)
-        guard let left = Evolution.weeksToNextStage(from: weeks) else { return "Fully grown. Legendary!" }
-        return "\(Self.stageName(stage + 1)) after \(left) more Discipline Week\(left == 1 ? "" : "s")"
+    /// Top line, level line, next-level line.
+    private var lines: (String, String, String) {
+        guard let progress, let activity = pet.activity else {
+            return ("Shows you around the kitchen", "With you from day one", " ")
+        }
+        guard progress.isUnlocked else {
+            return ("How to unlock:", activity.unlockHint, " ")
+        }
+        let since = progress.unlockedOn.map { "Since \($0.formatted(.dateTime.month(.abbreviated).day().year()))" } ?? ""
+        return ("\(activity.sessions(progress.sessions)) · \(since)",
+                "Level \(progress.level)",
+                "\(progress.experienceToNext) more to Lv \(progress.level + 1)")
     }
 }
 
-/// ①—②—③ with the segments filled by cumulative 自律周 (thresholds 1 / 4 / 12).
-private struct StageTrack: View {
-    let weeks: Int
+/// Lv N with a bar filling towards the next level.
+private struct LevelBar: View {
+    let level: Int
+    let fraction: Double
 
     var body: some View {
-        let t = Evolution.thresholds
         HStack(spacing: 0) {
-            ForEach(t.indices, id: \.self) { i in
-                if i > 0 {
-                    segment(fill: Double(weeks - t[i - 1]) / Double(t[i] - t[i - 1]))
+            Text("\(level)")
+                .font(ChibiFont.title(11))
+                .foregroundStyle(Palette.ink)
+                .frame(width: 22, height: 22)
+                .background(Circle().fill(level > 0 ? Palette.butter : Palette.empty))
+                .overlay(Circle().strokeBorder(Palette.ink, lineWidth: 2.5))
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Palette.empty
+                    Palette.butter.frame(width: geo.size.width * min(max(fraction, 0), 1))
                 }
-                Text("\(i + 1)")
-                    .font(ChibiFont.title(11))
-                    .foregroundStyle(Palette.ink)
-                    .frame(width: 22, height: 22)
-                    .background(Circle().fill(weeks >= t[i] ? Palette.butter : Palette.empty))
-                    .overlay(Circle().strokeBorder(Palette.ink, lineWidth: 2.5))
             }
+            .frame(height: 6)
+            .overlay(VStack { Palette.ink.frame(height: 2.5); Spacer(minLength: 0); Palette.ink.frame(height: 2.5) })
+            Text("\(level + 1)")
+                .font(ChibiFont.title(11))
+                .foregroundStyle(Palette.inkSoft)
+                .frame(width: 22, height: 22)
+                .background(Circle().fill(Palette.empty))
+                .overlay(Circle().strokeBorder(Palette.ink, lineWidth: 2.5))
         }
     }
-
-    private func segment(fill: Double) -> some View {
-        GeometryReader { geo in
-            ZStack(alignment: .leading) {
-                Palette.empty
-                Palette.butter.frame(width: geo.size.width * min(max(fill, 0), 1))
-            }
-        }
-        .frame(height: 6)
-        .overlay(VStack { Palette.ink.frame(height: 2.5); Spacer(minLength: 0); Palette.ink.frame(height: 2.5) })
-    }
-}
-
-private extension String {
-    var capitalizedFirst: String { prefix(1).uppercased() + dropFirst() }
 }

@@ -36,6 +36,16 @@ public struct HealthSnapshot: Codable, Sendable, Equatable, Identifiable {
     public var workoutMinutes: Double?
     /// Short name of that workout ("Run", "Yoga"), for display.
     public var workoutType: String?
+    /// Every workout of the day (nil in snapshots saved before pets were bound to activities).
+    public var workouts: [WorkoutSession]?
+    /// When the user woke up from the night ending this morning.
+    public var wakeTime: Date?
+    /// Minutes of mindfulness / meditation logged this day.
+    public var mindfulMinutes: Double?
+    /// Whoop day strain, 0-21 (still rising during the day).
+    public var strain: Double?
+    /// Whoop sleep performance: sleep got vs. sleep needed, 0-100.
+    public var sleepPerformance: Double?
 
     public init(
         day: Date,
@@ -48,7 +58,12 @@ public struct HealthSnapshot: Codable, Sendable, Equatable, Identifiable {
         vendorRecovery: Double? = nil,
         sleepOnset: Date? = nil,
         workoutMinutes: Double? = nil,
-        workoutType: String? = nil
+        workoutType: String? = nil,
+        workouts: [WorkoutSession]? = nil,
+        wakeTime: Date? = nil,
+        mindfulMinutes: Double? = nil,
+        strain: Double? = nil,
+        sleepPerformance: Double? = nil
     ) {
         self.day = day
         self.source = source
@@ -61,5 +76,10 @@ public struct HealthSnapshot: Codable, Sendable, Equatable, Identifiable {
         self.sleepOnset = sleepOnset
         self.workoutMinutes = workoutMinutes
         self.workoutType = workoutType
+        self.workouts = workouts
+        self.wakeTime = wakeTime
+        self.mindfulMinutes = mindfulMinutes
+        self.strain = strain
+        self.sleepPerformance = sleepPerformance
     }
 }

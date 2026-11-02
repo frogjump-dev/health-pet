@@ -100,6 +100,8 @@ export interface WhoopSleep {
   nap: boolean;
   score_state: ScoreState;
   score?: {
+    /** Sleep got vs. the sleep Whoop says the user needed, 0-100. */
+    sleep_performance_percentage?: number;
     stage_summary: {
       total_light_sleep_time_milli: number;
       total_slow_wave_sleep_time_milli: number;
@@ -120,6 +122,15 @@ export interface WhoopRecovery {
   };
 }
 
+/** A physiological cycle: from falling asleep to falling asleep again. Its strain is that day's strain. */
+export interface WhoopCycle {
+  id: number;
+  score_state: ScoreState;
+  score?: {
+    strain: number;
+  };
+}
+
 /** A row of `daily_snapshots`, minus user_id. */
 export interface SnapshotRow {
   source: "whoop";
@@ -129,6 +140,9 @@ export interface SnapshotRow {
   hrv_method: "rmssd" | null;
   resting_heart_rate: number | null;
   vendor_recovery: number | null;
+  /** Day strain 0-21 of the cycle that began with this sleep (still rising while the day is going). */
+  strain: number | null;
+  sleep_performance: number | null;
   whoop_sleep_id: string;
 }
 
@@ -141,11 +155,12 @@ export function localDay(isoInstant: string, timezoneOffset: string): string {
 }
 
 /**
- * Builds one snapshot per day from main sleeps (naps ignored) and their recoveries.
- * If several main sleeps end on the same day, the longest wins.
+ * Builds one snapshot per day from main sleeps (naps ignored), their recoveries and the
+ * strain of the cycle each sleep starts. If several main sleeps end on the same day, the longest wins.
  */
-export function toSnapshotRows(sleeps: WhoopSleep[], recoveries: WhoopRecovery[]): SnapshotRow[] {
+export function toSnapshotRows(sleeps: WhoopSleep[], recoveries: WhoopRecovery[], cycles: WhoopCycle[] = []): SnapshotRow[] {
   const recoveryBySleep = new Map(recoveries.map((r) => [r.sleep_id, r]));
+  const cycleById = new Map(cycles.map((c) => [c.id, c]));
   const byDay = new Map<string, SnapshotRow>();
 
   for (const sleep of sleeps) {
@@ -160,6 +175,8 @@ export function toSnapshotRows(sleeps: WhoopSleep[], recoveries: WhoopRecovery[]
 
     const recovery = recoveryBySleep.get(sleep.id);
     const score = recovery?.score_state === "SCORED" ? recovery.score : undefined;
+    const cycle = cycleById.get(sleep.cycle_id);
+    const performance = sleep.score_state === "SCORED" ? sleep.score?.sleep_performance_percentage : undefined;
 
     const row: SnapshotRow = {
       source: "whoop",
@@ -170,6 +187,9 @@ export function toSnapshotRows(sleeps: WhoopSleep[], recoveries: WhoopRecovery[]
       resting_heart_rate: score?.resting_heart_rate ?? null,
       // While Whoop is still calibrating a new user, its recovery score isn't meaningful yet.
       vendor_recovery: score && !score.user_calibrating ? score.recovery_score : null,
+      // A cycle in progress is still scored as it goes, so today's strain rises during the day.
+      strain: cycle?.score ? round(cycle.score.strain, 1) : null,
+      sleep_performance: performance ?? null,
       whoop_sleep_id: sleep.id,
     };
 
@@ -196,6 +216,8 @@ export interface SnapshotDTO {
   hrvMethod: "rmssd" | null;
   restingHeartRate: number | null;
   vendorRecovery: number | null;
+  strain: number | null;
+  sleepPerformance: number | null;
 }
 
 export function toDTO(row: SnapshotRow): SnapshotDTO {
@@ -207,5 +229,7 @@ export function toDTO(row: SnapshotRow): SnapshotDTO {
     hrvMethod: row.hrv_method,
     restingHeartRate: row.resting_heart_rate,
     vendorRecovery: row.vendor_recovery,
+    strain: row.strain,
+    sleepPerformance: row.sleep_performance,
   };
 }

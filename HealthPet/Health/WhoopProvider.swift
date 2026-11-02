@@ -68,6 +68,8 @@ struct WhoopProvider: HealthDataProvider {
         var hrvMethod: HRVMethod?
         var restingHeartRate: Double?
         var vendorRecovery: Double?
+        var strain: Double?
+        var sleepPerformance: Double?
 
         var snapshot: HealthSnapshot? {
             guard let date = WhoopProvider.dayFormatter.date(from: day) else { return nil }
@@ -78,7 +80,9 @@ struct WhoopProvider: HealthDataProvider {
                 hrvMs: hrvMs,
                 hrvMethod: hrvMethod,
                 restingHeartRate: restingHeartRate,
-                vendorRecovery: vendorRecovery
+                vendorRecovery: vendorRecovery,
+                strain: strain,
+                sleepPerformance: sleepPerformance
             )
         }
     }

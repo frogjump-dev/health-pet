@@ -41,7 +41,13 @@ public enum SnapshotMerger {
             vendorRecovery: byRecovery.lazy.compactMap(\.vendorRecovery).first,
             sleepOnset: byRecovery.lazy.compactMap(\.sleepOnset).first,
             workoutMinutes: workout?.workoutMinutes,
-            workoutType: workout?.workoutType
+            workoutType: workout?.workoutType,
+            // Each source sees its own workouts; a duplicate is harmless since a day counts once per activity.
+            workouts: sameDay.contains { $0.workouts != nil } ? sameDay.flatMap(\.allWorkouts) : nil,
+            wakeTime: byRecovery.lazy.compactMap(\.wakeTime).first,
+            mindfulMinutes: sameDay.compactMap(\.mindfulMinutes).max(),
+            strain: byRecovery.lazy.compactMap(\.strain).first,
+            sleepPerformance: byRecovery.lazy.compactMap(\.sleepPerformance).first
         )
     }
 

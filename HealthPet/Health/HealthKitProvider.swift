@@ -17,6 +17,7 @@ struct HealthKitProvider: HealthDataProvider {
             HKQuantityType(.heartRateVariabilitySDNN),
             HKQuantityType(.restingHeartRate),
             HKCategoryType(.sleepAnalysis),
+            HKCategoryType(.mindfulSession),
             HKObjectType.workoutType()
         ]
     }
@@ -32,13 +33,18 @@ struct HealthKitProvider: HealthDataProvider {
         async let hrv = daily(.heartRateVariabilitySDNN, unit: .secondUnit(with: .milli), options: .discreteAverage, from: firstDay, to: end)
         async let rhr = daily(.restingHeartRate, unit: .count().unitDivided(by: .minute()), options: .discreteAverage, from: firstDay, to: end)
         async let sleep = dailySleep(from: firstDay, to: end)
-        async let workouts = longestWorkouts(from: firstDay, to: end)
-        let (stepsByDay, hrvByDay, rhrByDay, sleepByDay, workoutByDay) = try await (steps, hrv, rhr, sleep, workouts)
+        async let workouts = dailyWorkouts(from: firstDay, to: end)
+        async let mindful = dailyMindfulMinutes(from: firstDay, to: end)
+        let (stepsByDay, hrvByDay, rhrByDay, sleepByDay, workoutsByDay) = try await (steps, hrv, rhr, sleep, workouts)
+        // Mindfulness is optional: a refused or failing query must not hide everything else.
+        let mindfulByDay = (try? await mindful) ?? [:]
 
         var result: [HealthSnapshot] = []
         var day = firstDay
         while day <= end {
             let hrvValue = hrvByDay[day]
+            let dayWorkouts = workoutsByDay[day] ?? []
+            let longest = dayWorkouts.max { $0.minutes < $1.minutes }
             result.append(HealthSnapshot(
                 day: day,
                 source: .healthKit,
@@ -48,8 +54,11 @@ struct HealthKitProvider: HealthDataProvider {
                 hrvMethod: hrvValue == nil ? nil : .sdnn,
                 restingHeartRate: rhrByDay[day],
                 sleepOnset: sleepByDay[day]?.onset,
-                workoutMinutes: workoutByDay[day]?.minutes,
-                workoutType: workoutByDay[day]?.name
+                workoutMinutes: longest?.minutes,
+                workoutType: longest?.name,
+                workouts: dayWorkouts,
+                wakeTime: sleepByDay[day]?.wake,
+                mindfulMinutes: mindfulByDay[day]
             ))
             guard let next = calendar.date(byAdding: .day, value: 1, to: day) else { break }
             day = next
@@ -88,10 +97,10 @@ struct HealthKitProvider: HealthDataProvider {
         return result
     }
 
-    /// Hours asleep and the time of falling asleep for the night that ends on each day.
+    /// Hours asleep, the time of falling asleep and of waking up for the night that ends on each day.
     /// Overlapping samples from several sources (Watch + phone + third-party apps) are merged
     /// so they are not double counted.
-    private func dailySleep(from start: Date, to end: Date) async throws -> [Date: (hours: Double, onset: Date?)] {
+    private func dailySleep(from start: Date, to end: Date) async throws -> [Date: (hours: Double, onset: Date?, wake: Date?)] {
         // Look back 12h so a night that started the evening before `start` is included.
         let queryStart = start.addingTimeInterval(-12 * 3600)
         let descriptor = HKSampleQueryDescriptor(
@@ -116,28 +125,48 @@ struct HealthKitProvider: HealthDataProvider {
         return intervalsByDay.reduce(into: [:]) { result, entry in
             // Onset = first sleep after 6 pm the evening before, so afternoon naps don't count.
             let eveningBefore = calendar.date(byAdding: .hour, value: -6, to: entry.key)!
-            let onset = entry.value.map(\.start).filter { $0 >= eveningBefore }.min()
-            result[entry.key] = (mergedDuration(entry.value) / 3600, onset)
+            let night = entry.value.filter { $0.start >= eveningBefore }
+            let onset = night.map(\.start).min()
+            // Wake = end of the night's sleep; a nap starting after noon doesn't move it.
+            let noon = calendar.date(byAdding: .hour, value: 12, to: entry.key)!
+            let wake = night.filter { $0.start < noon }.map(\.end).max()
+            result[entry.key] = (mergedDuration(entry.value) / 3600, onset, wake)
         }
     }
 
-    /// The longest workout started on each day.
-    private func longestWorkouts(from start: Date, to end: Date) async throws -> [Date: (minutes: Double, name: String)] {
+    /// Every workout started on each day.
+    private func dailyWorkouts(from start: Date, to end: Date) async throws -> [Date: [WorkoutSession]] {
         let descriptor = HKSampleQueryDescriptor(
             predicates: [.workout(HKQuery.predicateForSamples(withStart: start, end: end))],
             sortDescriptors: [SortDescriptor(\.startDate)]
         )
         let workouts = try await descriptor.result(for: store)
 
-        var result: [Date: (minutes: Double, name: String)] = [:]
+        var result: [Date: [WorkoutSession]] = [:]
         for workout in workouts {
             let day = calendar.startOfDay(for: workout.startDate)
-            let minutes = workout.duration / 60
-            if minutes > result[day]?.minutes ?? 0 {
-                result[day] = (minutes, Self.shortName(workout.workoutActivityType))
-            }
+            result[day, default: []].append(WorkoutSession(name: Self.shortName(workout.workoutActivityType),
+                                                           minutes: workout.duration / 60))
         }
         return result
+    }
+
+    /// Minutes of mindfulness sessions per day (Mindfulness app, Breathe, Headspace…).
+    private func dailyMindfulMinutes(from start: Date, to end: Date) async throws -> [Date: Double] {
+        let descriptor = HKSampleQueryDescriptor(
+            predicates: [.categorySample(
+                type: HKCategoryType(.mindfulSession),
+                predicate: HKQuery.predicateForSamples(withStart: start, end: end)
+            )],
+            sortDescriptors: [SortDescriptor(\.startDate)]
+        )
+        let samples = try await descriptor.result(for: store)
+        var result: [Date: [DateInterval]] = [:]
+        for sample in samples {
+            result[calendar.startOfDay(for: sample.startDate), default: []]
+                .append(DateInterval(start: sample.startDate, end: sample.endDate))
+        }
+        return result.mapValues { mergedDuration($0) / 60 }
     }
 
     private static func shortName(_ type: HKWorkoutActivityType) -> String {
@@ -154,6 +183,26 @@ struct HealthKitProvider: HealthDataProvider {
         case .elliptical: "Elliptical"
         case .rowing: "Row"
         case .pilates: "Pilates"
+        case .flexibility, .cooldown, .barre: "Stretch"
+        case .coreTraining: "Core"
+        case .mindAndBody, .taiChi: "Mind"
+        case .climbing: "Climb"
+        case .downhillSkiing, .crossCountrySkiing: "Ski"
+        case .snowboarding: "Snowboard"
+        case .surfingSports: "Surf"
+        case .skatingSports: "Skate"
+        case .basketball: "Basketball"
+        case .soccer: "Soccer"
+        case .americanFootball, .australianFootball: "Football"
+        case .tennis: "Tennis"
+        case .badminton: "Badminton"
+        case .volleyball: "Volleyball"
+        case .tableTennis: "Table tennis"
+        case .pickleball: "Pickleball"
+        case .squash: "Squash"
+        case .baseball, .softball: "Baseball"
+        case .rugby: "Rugby"
+        case .hockey: "Hockey"
         default: "Workout"
         }
     }

@@ -4,7 +4,7 @@
 import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2";
 import { decryptToken, encryptToken } from "./crypto.ts";
 import { toSnapshotRows } from "./whoop.ts";
-import { listRecoveries, listSleeps, refreshTokens, type WhoopTokens } from "./whoopClient.ts";
+import { listCycles, listRecoveries, listSleeps, refreshTokens, type WhoopTokens } from "./whoopClient.ts";
 
 export interface Config {
   supabaseUrl: string;
@@ -107,7 +107,7 @@ export async function accessTokenFor(db: SupabaseClient, config: Config, userId:
   throw new Error("Timed out waiting for another Whoop token refresh");
 }
 
-/** Pulls `days` days of Whoop sleep + recovery and upserts them as daily snapshots. */
+/** Pulls `days` days of Whoop sleep, recovery and cycle strain and upserts them as daily snapshots. */
 export async function syncUser(db: SupabaseClient, config: Config, userId: string, days: number): Promise<number> {
   const accessToken = await accessTokenFor(db, config, userId);
   if (!accessToken) return 0;
@@ -115,12 +115,13 @@ export async function syncUser(db: SupabaseClient, config: Config, userId: strin
   const end = new Date();
   // One extra day so a night that started before the window still counts.
   const start = new Date(end.getTime() - (days + 1) * 86_400_000);
-  const [sleeps, recoveries] = await Promise.all([
+  const [sleeps, recoveries, cycles] = await Promise.all([
     listSleeps(fetch, accessToken, start, end),
     listRecoveries(fetch, accessToken, start, end),
+    listCycles(fetch, accessToken, start, end),
   ]);
 
-  const rows = toSnapshotRows(sleeps, recoveries).map((r) => ({
+  const rows = toSnapshotRows(sleeps, recoveries, cycles).map((r) => ({
     ...r,
     user_id: userId,
     updated_at: new Date().toISOString(),

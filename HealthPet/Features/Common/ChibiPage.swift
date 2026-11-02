@@ -116,19 +116,3 @@ struct ChibiButton: View {
         .buttonStyle(PressableStyle())
     }
 }
-
-/// The 出炉券 (bake ticket) drawn as a little yellow stub.
-struct TicketGlyph: View {
-    var body: some View {
-        RoundedRectangle(cornerRadius: 3, style: .continuous)
-            .fill(Palette.butter)
-            .overlay(RoundedRectangle(cornerRadius: 3, style: .continuous).strokeBorder(Palette.ink, lineWidth: 2))
-            .overlay(alignment: .leading) {
-                Rectangle()
-                    .stroke(Palette.ink, style: StrokeStyle(lineWidth: 1.5, dash: [2, 2]))
-                    .frame(width: 0.1)
-                    .padding(.leading, 6)
-            }
-            .frame(width: 20, height: 13)
-    }
-}
