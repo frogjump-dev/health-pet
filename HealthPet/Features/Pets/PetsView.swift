@@ -19,7 +19,7 @@ struct PetsView: View {
             if let top = model.topPets.first {
                 HStack(spacing: 4) {
                     Image(systemName: "star.fill").font(.system(size: 12, weight: .black))
-                    Text("Lv \(top.progress.level)").font(ChibiFont.title(15))
+                    Text("Top Lv \(top.progress.level)").font(ChibiFont.title(15))
                 }
                 .foregroundStyle(Palette.ink)
                 .padding(.horizontal, 9)
@@ -68,7 +68,7 @@ struct PetsView: View {
         if selected.id == model.mainPet.id {
             note("Main pet · stands in the middle of your kitchen", icon: "star.fill")
         } else if !have {
-            note(selected.activity?.unlockHint ?? "", icon: "lock.fill")
+            note("Not unlocked yet · do it once and it's yours", icon: "lock.fill")
         } else if selected.image == nil {
             note("Moves into your kitchen when its art is ready", icon: "paintbrush.fill")
         } else {
@@ -155,7 +155,8 @@ struct PetsView: View {
                     .font(ChibiFont.bold(10.5))
                     .foregroundStyle(have ? Palette.ink : Palette.inkSoft)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.7)
+                    .minimumScaleFactor(0.55)
+                    .padding(.horizontal, 5)
                     .padding(.vertical, 3)
                     .frame(maxWidth: .infinity)
                     .background(have ? Palette.cream : Color(red: 0.87, green: 0.82, blue: 0.72))
