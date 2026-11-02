@@ -185,6 +185,13 @@ public struct ActivityProgress: Sendable, Equatable {
     /// The day the pet was unlocked (its 出炉证书 date), nil while locked.
     public var unlockedOn: Date?
 
+    public init(activity: Activity, sessions: Int, experience: Int, unlockedOn: Date?) {
+        self.activity = activity
+        self.sessions = sessions
+        self.experience = experience
+        self.unlockedOn = unlockedOn
+    }
+
     public var level: Int { PetLevel.level(forExperience: experience) }
     public var isUnlocked: Bool { sessions > 0 }
 
