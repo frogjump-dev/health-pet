@@ -1,7 +1,7 @@
 // Network side of Whoop: token exchange/refresh and paginated reads.
 // Takes `fetch` as a parameter so tests can stub it.
 
-import { WHOOP_API_BASE, WHOOP_TOKEN_URL, type WhoopRecovery, type WhoopSleep } from "./whoop.ts";
+import { WHOOP_API_BASE, WHOOP_TOKEN_URL, type WhoopCycle, type WhoopRecovery, type WhoopSleep } from "./whoop.ts";
 
 export interface WhoopTokens {
   access_token: string;
@@ -87,6 +87,10 @@ export function listSleeps(fetchFn: Fetch, accessToken: string, start: Date, end
 
 export function listRecoveries(fetchFn: Fetch, accessToken: string, start: Date, end: Date): Promise<WhoopRecovery[]> {
   return collect<WhoopRecovery>(fetchFn, accessToken, "/v2/recovery", start, end);
+}
+
+export function listCycles(fetchFn: Fetch, accessToken: string, start: Date, end: Date): Promise<WhoopCycle[]> {
+  return collect<WhoopCycle>(fetchFn, accessToken, "/v2/cycle", start, end);
 }
 
 export function getProfile(fetchFn: Fetch, accessToken: string): Promise<{ user_id: number }> {

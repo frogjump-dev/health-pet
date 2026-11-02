@@ -7,8 +7,16 @@ public enum Activity: String, Codable, Sendable, CaseIterable, Identifiable {
     case walking, onTimeSleep, earlyRise, mindfulness
     case running, strength, hiit, cycling, swimming, hiking
     case yoga, pilates, dance, ballSports, climbing, other
+    /// Whoop only (decided 2026-11-02): a day whose strain fits that morning's recovery,
+    /// a night that met Whoop's sleep need, and a high-strain day.
+    case recoveryMatch, sleepNeedMet, highStrain
 
     public var id: String { rawValue }
+
+    /// Needs data only a Whoop band provides.
+    public var isWhoopOnly: Bool {
+        self == .recoveryMatch || self == .sleepNeedMet || self == .highStrain
+    }
 
     /// Short name for chips and titles, e.g. "Running".
     public var title: String {
@@ -29,6 +37,9 @@ public enum Activity: String, Codable, Sendable, CaseIterable, Identifiable {
         case .ballSports: "Ball sports"
         case .climbing: "Climbing"
         case .other: "All-rounder"
+        case .recoveryMatch: "Listening to your body"
+        case .sleepNeedMet: "Sleep need met"
+        case .highStrain: "High strain"
         }
     }
 
@@ -44,6 +55,9 @@ public enum Activity: String, Codable, Sendable, CaseIterable, Identifiable {
         case .swimming: ("swim", "swims")
         case .hiking: ("hike", "hikes")
         case .climbing: ("climb", "climbs")
+        case .recoveryMatch: ("balanced day", "balanced days")
+        case .sleepNeedMet: ("full night", "full nights")
+        case .highStrain: ("big day", "big days")
         default: ("session", "sessions")
         }
         return "\(count) \(count == 1 ? names.one : names.many)"
@@ -57,6 +71,9 @@ public enum Activity: String, Codable, Sendable, CaseIterable, Identifiable {
         case .earlyRise: "Wake up by your target time"
         case .mindfulness: "10 minutes of mindfulness"
         case .other: "A 20-min workout of any other kind"
+        case .recoveryMatch: "Whoop: train to match your recovery"
+        case .sleepNeedMet: "Whoop: get 85%+ of your sleep need"
+        case .highStrain: "Whoop: reach a day strain of 14"
         default: "One 20-min \(title.lowercased()) workout"
         }
     }
@@ -113,13 +130,30 @@ public struct ActivityTracker: Sendable {
     public var discipline: DisciplineTracker
     public var wakeTarget: WakeTime
     public var minMindfulMinutes: Double = 10
+    /// Whoop sleep performance (0-100) that counts as a full night.
+    public var minSleepPerformance: Double = 85
+    /// Whoop day strain (0-21) that counts as a big day.
+    public var highStrain: Double = 14
 
     public init(discipline: DisciplineTracker, wakeTarget: WakeTime) {
         self.discipline = discipline
         self.wakeTarget = wakeTarget
     }
 
-    public func activities(on day: HealthSnapshot) -> Set<Activity> {
+    /// Whether a finished day's strain fit that morning's Whoop recovery: on green (67%+) a
+    /// strain of 10+, on yellow (34-66%) 8 to 14, on red (under 34%) under 10. Rest on a red
+    /// day counts just like a hard day on a green one; the recovery score itself is never ranked.
+    public func strainMatchesRecovery(recovery: Double, strain: Double) -> Bool {
+        switch recovery {
+        case 67...: strain >= 10
+        case 34..<67: strain >= 8 && strain <= 14
+        default: strain < 10
+        }
+    }
+
+    /// `dayIsOver` = false for today: its strain is still rising, so whether it fit the
+    /// recovery can't be judged yet. Everything else can count as soon as it happens.
+    public func activities(on day: HealthSnapshot, dayIsOver: Bool = true) -> Set<Activity> {
         let rules = discipline.rules
         var result: Set<Activity> = []
 
@@ -133,6 +167,15 @@ public struct ActivityTracker: Sendable {
         }
         if (day.mindfulMinutes ?? 0) >= minMindfulMinutes { result.insert(.mindfulness) }
 
+        if (day.sleepPerformance ?? 0) >= minSleepPerformance { result.insert(.sleepNeedMet) }
+        if let strain = day.strain {
+            if strain >= highStrain { result.insert(.highStrain) }
+            if dayIsOver, let recovery = day.vendorRecovery,
+               strainMatchesRecovery(recovery: recovery, strain: strain) {
+                result.insert(.recoveryMatch)
+            }
+        }
+
         for workout in day.allWorkouts {
             let activity = Activity(workoutName: workout.name)
             let needed = activity == .mindfulness ? minMindfulMinutes : rules.minWorkoutMinutes
@@ -142,9 +185,10 @@ public struct ActivityTracker: Sendable {
     }
 
     /// Every day's activities, keyed by the start of the day. Days with none are left out.
-    public func log(_ snapshots: [HealthSnapshot]) -> [Date: Set<Activity>] {
+    /// Days from `today` on are treated as still going (see `activities(on:dayIsOver:)`).
+    public func log(_ snapshots: [HealthSnapshot], today: Date? = nil) -> [Date: Set<Activity>] {
         snapshots.reduce(into: [:]) { log, day in
-            let done = activities(on: day)
+            let done = activities(on: day, dayIsOver: today.map { day.day < $0 } ?? true)
             if !done.isEmpty { log[day.day] = done }
         }
     }

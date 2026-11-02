@@ -80,4 +80,30 @@ final class ActivityTests: XCTestCase {
         XCTAssertFalse(progress[.swimming]!.isUnlocked)
         XCTAssertEqual(progress[.swimming]?.level, 0)
     }
+
+    func testWhoopSleepAndStrain() {
+        let full = HealthSnapshot(day: day(0), source: .whoop, strain: 14.2, sleepPerformance: 85)
+        XCTAssertTrue(tracker.activities(on: full).isSuperset(of: [.sleepNeedMet, .highStrain]))
+        let short = HealthSnapshot(day: day(0), source: .whoop, strain: 13.9, sleepPerformance: 84)
+        XCTAssertTrue(tracker.activities(on: short).isDisjoint(with: [.sleepNeedMet, .highStrain]))
+    }
+
+    func testStrainMustFitRecovery() {
+        XCTAssertTrue(tracker.strainMatchesRecovery(recovery: 80, strain: 12))
+        XCTAssertFalse(tracker.strainMatchesRecovery(recovery: 80, strain: 6))
+        XCTAssertTrue(tracker.strainMatchesRecovery(recovery: 50, strain: 8))
+        XCTAssertFalse(tracker.strainMatchesRecovery(recovery: 50, strain: 15))
+        XCTAssertTrue(tracker.strainMatchesRecovery(recovery: 20, strain: 6), "resting on a red day counts")
+        XCTAssertFalse(tracker.strainMatchesRecovery(recovery: 20, strain: 12))
+    }
+
+    func testRecoveryMatchWaitsForTheDayToEnd() {
+        let red = HealthSnapshot(day: day(2), source: .whoop, vendorRecovery: 20, strain: 4)
+        XCTAssertNil(tracker.log([red], today: day(2))[day(2)])
+        XCTAssertEqual(tracker.log([red], today: day(3))[day(2)], [.recoveryMatch])
+    }
+
+    func testWhoopActivitiesAreFlagged() {
+        XCTAssertEqual(Activity.allCases.filter(\.isWhoopOnly), [.recoveryMatch, .sleepNeedMet, .highStrain])
+    }
 }

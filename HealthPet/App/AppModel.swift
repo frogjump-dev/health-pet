@@ -288,7 +288,7 @@ final class AppModel {
         }
         onTimeStreak = tracker.onTimeStreak(snapshots)
         let finishedWeeks = tracker.disciplinedWeeks(in: snapshots, before: now)
-        let log = activityTracker.log(snapshots)
+        let log = activityTracker.log(snapshots, today: todayStart)
         if recordMemories && dataMode == .live {
             store.recordDisciplinedWeeks(finishedWeeks)
             store.recordActivities(log)

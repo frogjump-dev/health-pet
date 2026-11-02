@@ -39,7 +39,7 @@ Deno.serve(async (req) => {
 
   const { data, error } = await db
     .from("daily_snapshots")
-    .select("source, day, sleep_hours, hrv_ms, hrv_method, resting_heart_rate, vendor_recovery, whoop_sleep_id")
+    .select("source, day, sleep_hours, hrv_ms, hrv_method, resting_heart_rate, vendor_recovery, strain, sleep_performance, whoop_sleep_id")
     .eq("user_id", userId)
     .gte("day", from)
     .lte("day", to)

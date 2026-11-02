@@ -4,6 +4,8 @@ import PetCore
 /// The four breakfast families of the roster (by food type; MBTI is personality text only).
 enum PetFamily: String, CaseIterable, Identifiable {
     case grain, brew, sweet, fruit
+    /// 补给小队: the three Whoop-only pets.
+    case supply
 
     var id: String { rawValue }
 
@@ -13,6 +15,7 @@ enum PetFamily: String, CaseIterable, Identifiable {
         case .brew: "Brew Mages"
         case .sweet: "Sweet Healers"
         case .fruit: "Fruit Fighters"
+        case .supply: "Supply Squad"
         }
     }
 
@@ -23,6 +26,7 @@ enum PetFamily: String, CaseIterable, Identifiable {
         case .brew: "Brew Mage"
         case .sweet: "Sweet Healer"
         case .fruit: "Fruit Fighter"
+        case .supply: "Supply Squad"
         }
     }
 
@@ -32,6 +36,7 @@ enum PetFamily: String, CaseIterable, Identifiable {
         case .brew: "coffee & tea"
         case .sweet: "desserts"
         case .fruit: "fruit & spice"
+        case .supply: "Whoop only"
         }
     }
 
@@ -42,6 +47,7 @@ enum PetFamily: String, CaseIterable, Identifiable {
         case .brew: Color(red: 0.89, green: 0.84, blue: 0.98)
         case .sweet: Color(red: 1.00, green: 0.83, blue: 0.80)
         case .fruit: Color(red: 0.80, green: 0.92, blue: 0.78)
+        case .supply: Color(red: 0.80, green: 0.90, blue: 0.97)
         }
     }
 
@@ -52,6 +58,7 @@ enum PetFamily: String, CaseIterable, Identifiable {
         case .brew: Color(red: 0.48, green: 0.36, blue: 0.78)
         case .sweet: Color(red: 0.82, green: 0.38, blue: 0.35)
         case .fruit: Color(red: 0.31, green: 0.60, blue: 0.36)
+        case .supply: Color(red: 0.20, green: 0.45, blue: 0.68)
         }
     }
 }
@@ -80,7 +87,7 @@ struct RosterPet: Identifiable, Equatable {
     static let chili = RosterPet(id: "chili", name: "Chili", image: "pet_chili", mbti: "ESTP", family: .fruit, activity: .running)
     static let onigiri = RosterPet(id: "onigiri", name: "Onigiri", image: "pet_onigiri", mbti: "ISTJ", family: .grain, activity: .walking)
 
-    /// All 16 collectable pets, four per family. English names are placeholders until naming is decided.
+    /// All collectable pets: 16 in four families of four, plus the 3 Whoop-only pets. English names are placeholders until naming is decided.
     static let roster: [RosterPet] = [
         onigiri,
         RosterPet(id: "mantou", name: "Mantou", image: nil, mbti: "ISFJ", family: .grain, activity: .onTimeSleep),
@@ -98,6 +105,10 @@ struct RosterPet: Identifiable, Equatable {
         RosterPet(id: "lemon", name: "Lemon", image: nil, mbti: "ISFP", family: .fruit, activity: .hiking),
         chili,
         RosterPet(id: "pineapple", name: "Pineapple", image: nil, mbti: "ESFP", family: .fruit, activity: .ballSports),
+        // Whoop only, no MBTI. Art will be pet_honey / pet_warmmilk / pet_proteinbar.
+        RosterPet(id: "honey", name: "Honey", image: nil, mbti: "", family: .supply, activity: .recoveryMatch),
+        RosterPet(id: "warmmilk", name: "Warm Milk", image: nil, mbti: "", family: .supply, activity: .sleepNeedMet),
+        RosterPet(id: "proteinbar", name: "Protein Bar", image: nil, mbti: "", family: .supply, activity: .highStrain),
     ]
 
     static func pet(for activity: Activity) -> RosterPet {
@@ -129,6 +140,9 @@ extension Activity {
         case .ballSports: "figure.basketball"
         case .climbing: "figure.climbing"
         case .other: "figure.mixed.cardio"
+        case .recoveryMatch: "battery.75percent"
+        case .sleepNeedMet: "bed.double.fill"
+        case .highStrain: "flame.fill"
         }
     }
 }

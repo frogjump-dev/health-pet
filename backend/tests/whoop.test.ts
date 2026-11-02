@@ -87,6 +87,8 @@ test("sleep + recovery become one snapshot per day", () => {
     hrv_method: "rmssd",
     resting_heart_rate: 52,
     vendor_recovery: 40,
+    strain: null,
+    sleep_performance: null,
     whoop_sleep_id: "s2",
   });
 });
@@ -117,7 +119,22 @@ test("unscored data and calibrating recovery are left empty", () => {
 
 test("DTO uses the app's field names", () => {
   const [row] = toSnapshotRows([sleep("s", "2026-10-28T07:00:00Z", 8)], [recovery("s", 66)]);
-  assert.deepEqual(Object.keys(toDTO(row)).sort(), ["day", "hrvMethod", "hrvMs", "restingHeartRate", "sleepHours", "source", "vendorRecovery"]);
+  assert.deepEqual(Object.keys(toDTO(row)).sort(),
+    ["day", "hrvMethod", "hrvMs", "restingHeartRate", "sleepHours", "sleepPerformance", "source", "strain", "vendorRecovery"]);
+});
+
+test("day strain comes from the cycle the sleep starts; sleep performance from the sleep", () => {
+  const s = sleep("s", "2026-10-28T07:00:00Z", 8, { cycle_id: 42 });
+  s.score = { ...stages(8), sleep_performance_percentage: 91 };
+  const [row] = toSnapshotRows([s], [recovery("s", 70)], [
+    { id: 41, score_state: "SCORED", score: { strain: 9.9 } },
+    { id: 42, score_state: "SCORED", score: { strain: 14.26 } },
+  ]);
+  assert.equal(row.strain, 14.3);
+  assert.equal(row.sleep_performance, 91);
+  const [noCycle] = toSnapshotRows([sleep("t", "2026-10-29T07:00:00Z", 7)], []);
+  assert.equal(noCycle.strain, null);
+  assert.equal(noCycle.sleep_performance, null);
 });
 
 test("tokens round-trip through AES-GCM and fail with the wrong key", async () => {

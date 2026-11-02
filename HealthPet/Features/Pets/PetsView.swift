@@ -1,7 +1,7 @@
 import SwiftUI
 import PetCore
 
-/// Pets 图鉴: the 16 breakfast pets by family. Each pet is bound to one activity: do it once
+/// Pets 图鉴: the breakfast pets (and the Whoop-only Supply Squad) by family. Each pet is bound to one activity: do it once
 /// to unlock the pet, and its level shows how much of it you've done. Locked pets show the
 /// activity that unlocks them.
 struct PetsView: View {
@@ -99,6 +99,8 @@ struct PetsView: View {
                 ForEach(pets) { pet in
                     card(pet, family: family)
                 }
+                // Keep card widths the same in shorter rows (the Whoop family has three).
+                ForEach(pets.count..<4, id: \.self) { _ in Color.clear.frame(maxWidth: .infinity, maxHeight: 1) }
             }
         }
         .padding(.top, 14)
@@ -210,7 +212,7 @@ private struct FeaturedPet: View {
                 HStack(spacing: 5) {
                     if let activity = pet.activity {
                         ChibiChip(text: activity.title, fill: pet.family?.tint ?? Palette.cream)
-                        ChibiChip(text: pet.mbti)
+                        ChibiChip(text: pet.mbti.isEmpty ? "Whoop" : pet.mbti)
                     } else {
                         ChibiChip(text: "Your guide", fill: Palette.honey)
                     }
