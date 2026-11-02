@@ -114,19 +114,3 @@ public struct DisciplineTracker: Sendable {
         return starts.sorted().filter { week(containing: $0, snapshots: snapshots, leaveDays: leaveDays).isDisciplined }
     }
 }
-
-/// 「自律越久，宠物进化越多」: 3 stages unlocked by cumulative 自律周, never lost.
-public enum Evolution {
-    /// Cumulative 自律周 needed for stage 1, 2 and 3 (食物小怪 → 学徒 → 英雄).
-    public static let thresholds = [1, 4, 12]
-
-    /// 0 before the first 自律周 (starting look), then 1...3.
-    public static func stage(forDisciplinedWeeks weeks: Int) -> Int {
-        thresholds.filter { weeks >= $0 }.count
-    }
-
-    /// Weeks still needed for the next stage, or nil at the top stage.
-    public static func weeksToNextStage(from weeks: Int) -> Int? {
-        thresholds.first { $0 > weeks }.map { $0 - weeks }
-    }
-}

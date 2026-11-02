@@ -432,10 +432,10 @@ private struct WeekCard: View {
     private func nudge(workouts: Int, nights: Int, rules: DisciplineRules) -> String {
         let needW = max(rules.workoutsPerWeek - workouts, 0)
         let needN = max(rules.onTimeNightsPerWeek - nights, 0)
-        if needW == 0 && needN == 0 { return "Discipline Week done! A bake ticket is waiting." }
+        if needW == 0 && needN == 0 { return "Discipline Week done! Your pets earn double this week." }
         var parts: [String] = []
         if needW > 0 { parts.append("\(needW) workout\(needW == 1 ? "" : "s")") }
         if needN > 0 { parts.append("\(needN) good night\(needN == 1 ? "" : "s")") }
-        return parts.joined(separator: " + ") + " more this week bakes a ticket"
+        return parts.joined(separator: " + ") + " more this week for double pet XP"
     }
 }

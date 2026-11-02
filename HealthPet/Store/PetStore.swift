@@ -17,8 +17,11 @@ final class PetStore {
     private(set) var lastTreatDay: Date?
     private(set) var memories: [MemoryEvent]
     private(set) var cachedSnapshots: [HealthSnapshot]
-    /// Starts of every finished 自律周. Kept forever: evolution and titles only go up.
+    /// Starts of every finished 自律周. Kept forever: titles and double experience only go up.
     private(set) var disciplinedWeeks: Set<Date>
+    /// Which activities each day counted for. Kept forever (the snapshot cache only holds
+    /// 30 days), so pets stay unlocked and levels never go down.
+    private(set) var activityLog: [Date: Set<Activity>]
 
     private let defaults: UserDefaults
     private var pats: [String: Int]
@@ -31,6 +34,7 @@ final class PetStore {
         static let pats = "pats"
         static let snapshots = "cachedSnapshots"
         static let disciplinedWeeks = "disciplinedWeeks"
+        static let activityLog = "activityLog"
     }
 
     init(defaults: UserDefaults = .standard) {
@@ -48,6 +52,7 @@ final class PetStore {
         memories = Self.decode([MemoryEvent].self, defaults.data(forKey: Keys.memories)) ?? []
         cachedSnapshots = Self.decode([HealthSnapshot].self, defaults.data(forKey: Keys.snapshots)) ?? []
         disciplinedWeeks = Self.decode(Set<Date>.self, defaults.data(forKey: Keys.disciplinedWeeks)) ?? []
+        activityLog = Self.decode([Date: Set<Activity>].self, defaults.data(forKey: Keys.activityLog)) ?? [:]
     }
 
     // MARK: - Friendship
@@ -103,6 +108,17 @@ final class PetStore {
         guard updated != disciplinedWeeks else { return }
         disciplinedWeeks = updated
         defaults.set(try? JSONEncoder().encode(updated), forKey: Keys.disciplinedWeeks)
+    }
+
+    /// Adds days' activities. Nothing is ever removed, even if later data looks different.
+    func recordActivities(_ log: [Date: Set<Activity>]) {
+        var updated = activityLog
+        for (day, activities) in log {
+            updated[day, default: []].formUnion(activities)
+        }
+        guard updated != activityLog else { return }
+        activityLog = updated
+        defaults.set(try? JSONEncoder().encode(updated), forKey: Keys.activityLog)
     }
 
     func cache(_ snapshots: [HealthSnapshot]) {

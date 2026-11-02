@@ -80,13 +80,4 @@ final class DisciplineTests: XCTestCase {
         XCTAssertEqual(tracker.onTimeStreak(all), 2)
         XCTAssertEqual(tracker.disciplinedWeeks(in: all, before: day(2)), [day(-7)])
     }
-
-    func testEvolutionStages() {
-        XCTAssertEqual(Evolution.stage(forDisciplinedWeeks: 0), 0)
-        XCTAssertEqual(Evolution.stage(forDisciplinedWeeks: 1), 1)
-        XCTAssertEqual(Evolution.stage(forDisciplinedWeeks: 11), 2)
-        XCTAssertEqual(Evolution.stage(forDisciplinedWeeks: 12), 3)
-        XCTAssertEqual(Evolution.weeksToNextStage(from: 2), 2)
-        XCTAssertNil(Evolution.weeksToNextStage(from: 12))
-    }
 }

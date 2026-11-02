@@ -178,12 +178,17 @@ struct ShareView: View {
                 footer: Date().formatted(.dateTime.weekday(.wide).month(.abbreviated).day()))
 
         case .pets:
+            // The highest-level pet says what the user is best at, e.g. "Chili · Running Lv 7".
+            let top = model.topPets.first
             return .init(
-                ribbon: "MY BREAKFAST CREW", lead: "Raised with ", title: model.mainPet.name, pets: pets,
+                ribbon: "MY BREAKFAST CREW",
+                lead: top == nil ? "Raised with " : "Best at ",
+                title: top.map { "\($0.progress.activity.title) Lv \($0.progress.level)" } ?? model.mainPet.name,
+                pets: pets,
                 stats: [
                     // Same count as the Pets page: Toast the guide isn't one of the 16.
                     .init(value: "\(RosterPet.roster.filter { pet in model.ownedPets.contains(pet) }.count)",
-                          label: "pets baked", color: .steps),
+                          label: "pets unlocked", color: .steps),
                     .init(value: "\(model.disciplinedWeekCount)", label: "discipline weeks", color: .workout),
                     .init(value: "\(model.daysTogether)", label: "days together", color: .sleep),
                 ],
