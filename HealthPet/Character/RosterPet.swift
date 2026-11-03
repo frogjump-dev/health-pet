@@ -105,10 +105,10 @@ struct RosterPet: Identifiable, Equatable {
         RosterPet(id: "lemon", name: "Lemon", image: nil, mbti: "ISFP", family: .fruit, activity: .hiking),
         chili,
         RosterPet(id: "pineapple", name: "Pineapple", image: nil, mbti: "ESFP", family: .fruit, activity: .ballSports),
-        // Whoop only, no MBTI. Art will be pet_honey / pet_warmmilk / pet_proteinbar.
-        RosterPet(id: "honey", name: "Honey", image: nil, mbti: "", family: .supply, activity: .recoveryMatch),
-        RosterPet(id: "warmmilk", name: "Warm Milk", image: nil, mbti: "", family: .supply, activity: .sleepNeedMet),
-        RosterPet(id: "proteinbar", name: "Protein Bar", image: nil, mbti: "", family: .supply, activity: .highStrain),
+        // Whoop only, no MBTI.
+        RosterPet(id: "honey", name: "Honey", image: "pet_honey", mbti: "", family: .supply, activity: .recoveryMatch),
+        RosterPet(id: "warmmilk", name: "Warm Milk", image: "pet_warmmilk", mbti: "", family: .supply, activity: .sleepNeedMet),
+        RosterPet(id: "proteinbar", name: "Protein Bar", image: "pet_proteinbar", mbti: "", family: .supply, activity: .highStrain),
     ]
 
     static func pet(for activity: Activity) -> RosterPet {
