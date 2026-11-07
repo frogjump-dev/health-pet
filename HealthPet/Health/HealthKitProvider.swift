@@ -14,6 +14,7 @@ struct HealthKitProvider: HealthDataProvider {
     private var readTypes: Set<HKObjectType> {
         [
             HKQuantityType(.stepCount),
+            HKQuantityType(.activeEnergyBurned),
             HKQuantityType(.heartRateVariabilitySDNN),
             HKQuantityType(.restingHeartRate),
             HKCategoryType(.sleepAnalysis),
@@ -35,9 +36,11 @@ struct HealthKitProvider: HealthDataProvider {
         async let sleep = dailySleep(from: firstDay, to: end)
         async let workouts = dailyWorkouts(from: firstDay, to: end)
         async let mindful = dailyMindfulMinutes(from: firstDay, to: end)
+        async let energy = daily(.activeEnergyBurned, unit: .kilocalorie(), options: .cumulativeSum, from: firstDay, to: end)
         let (stepsByDay, hrvByDay, rhrByDay, sleepByDay, workoutsByDay) = try await (steps, hrv, rhr, sleep, workouts)
-        // Mindfulness is optional: a refused or failing query must not hide everything else.
+        // Mindfulness and active energy are optional: a refused or failing query must not hide everything else.
         let mindfulByDay = (try? await mindful) ?? [:]
+        let energyByDay = (try? await energy) ?? [:]
 
         var result: [HealthSnapshot] = []
         var day = firstDay
@@ -58,7 +61,8 @@ struct HealthKitProvider: HealthDataProvider {
                 workoutType: longest?.name,
                 workouts: dayWorkouts,
                 wakeTime: sleepByDay[day]?.wake,
-                mindfulMinutes: mindfulByDay[day]
+                mindfulMinutes: mindfulByDay[day],
+                activeEnergyKcal: energyByDay[day]
             ))
             guard let next = calendar.date(byAdding: .day, value: 1, to: day) else { break }
             day = next

@@ -46,6 +46,8 @@ public struct HealthSnapshot: Codable, Sendable, Equatable, Identifiable {
     public var strain: Double?
     /// Whoop sleep performance: sleep got vs. sleep needed, 0-100.
     public var sleepPerformance: Double?
+    /// Active energy burned this day, in kcal (Apple Health "Move"; nil in older snapshots).
+    public var activeEnergyKcal: Double?
 
     public init(
         day: Date,
@@ -63,7 +65,8 @@ public struct HealthSnapshot: Codable, Sendable, Equatable, Identifiable {
         wakeTime: Date? = nil,
         mindfulMinutes: Double? = nil,
         strain: Double? = nil,
-        sleepPerformance: Double? = nil
+        sleepPerformance: Double? = nil,
+        activeEnergyKcal: Double? = nil
     ) {
         self.day = day
         self.source = source
@@ -81,5 +84,6 @@ public struct HealthSnapshot: Codable, Sendable, Equatable, Identifiable {
         self.mindfulMinutes = mindfulMinutes
         self.strain = strain
         self.sleepPerformance = sleepPerformance
+        self.activeEnergyKcal = activeEnergyKcal
     }
 }
