@@ -94,6 +94,10 @@ final class PetStageController {
         case "tap":
             lastTapMode = message["mode"] as? String ?? "awake"
             tapCount += 1
+        case "error":
+            #if DEBUG
+            print("[pet.html] \(message["message"] as? String ?? "?")")
+            #endif
         default:
             break
         }

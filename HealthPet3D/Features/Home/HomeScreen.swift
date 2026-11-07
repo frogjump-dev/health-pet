@@ -40,6 +40,9 @@ struct HomeScreen: View {
         .toolbar(.hidden, for: .navigationBar)
         .sensoryFeedback(.impact(weight: .light), trigger: bites)
         .onAppear {
+            #if DEBUG
+            if UserDefaults.standard.bool(forKey: "hp3dRegrow") { home.regrowFood() }
+            #endif
             onScreen = true
             stage.pause(false)
             greet()
@@ -126,6 +129,17 @@ struct HomeScreen: View {
                 }
             }
             .animation(.spring(duration: 0.45, bounce: 0.35), value: bubbles.map(\.id))
+            #if DEBUG
+            .task(id: stage.isReady) {
+                // For screenshots on the simulator: -hp3dFeed all (or a bubble id prefix such as steps)
+                guard stage.isReady, let which = UserDefaults.standard.string(forKey: "hp3dFeed") else { return }
+                try? await Task.sleep(for: .seconds(9))
+                for bubble in model.foodBubbles(eaten: { home.eatenValue($0) }) where which == "all" || bubble.id.hasPrefix(which) {
+                    harvest(bubble, all: bubbles, from: layout.slot(bubble.slot), to: layout.mouth, lift: size.width * 0.16)
+                    try? await Task.sleep(for: .seconds(0.9))
+                }
+            }
+            #endif
         }
     }
 

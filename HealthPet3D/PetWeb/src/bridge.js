@@ -13,6 +13,8 @@ const BEDTIME = { drowsy: 4, asleep: 10 };
 
 const post = (msg) => { try { window.webkit?.messageHandlers?.pet?.postMessage(msg); } catch { /* not in the app */ } };
 const stage = document.getElementById('stage');
+window.addEventListener('error', (e) => post({ type: 'error', message: `${e.message} @${e.lineno}:${e.colno}` }));
+window.addEventListener('unhandledrejection', (e) => post({ type: 'error', message: String(e.reason) }));
 const cfg = { pet: 'toast', rug: false, shadow: true, dark: false, canvas: null, bedtime: false, mood: 'normal', interactive: true, still: null,
   // where the pet's 100 × 100 box sits in the page, as fractions of the page width / height
   box: { x: 0.19, y: 0.245, size: 0.62 } };

@@ -68,6 +68,8 @@ targets:
       - path: HealthPet3D
         excludes:
           - "PetWeb/**"
+          - "tools/**"
+          - "README.md"
       - path: HealthPet/App/AppModel.swift
       - path: HealthPet/Character
       - path: HealthPet/Health

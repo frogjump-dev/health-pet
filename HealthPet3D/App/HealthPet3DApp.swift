@@ -55,5 +55,25 @@ struct RootView: View {
                     }
                 }
         }
+        #if DEBUG
+        .onAppear { router.path = Self.launchRoute() }
+        #endif
     }
+
+    #if DEBUG
+    /// For screenshots on the simulator: `-hp3dRoute today|pets|pet:chili|share|memories|settings`.
+    private static func launchRoute() -> [Route] {
+        guard let raw = UserDefaults.standard.string(forKey: "hp3dRoute") else { return [] }
+        switch raw {
+        case "today": return [.today]
+        case "pets": return [.pets]
+        case "share": return [.today, .share]
+        case "memories": return [.memories]
+        case "settings": return [.settings]
+        default:
+            if raw.hasPrefix("pet:") { return [.pets, .pet(String(raw.dropFirst(4)))] }
+            return []
+        }
+    }
+    #endif
 }
