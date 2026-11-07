@@ -47,7 +47,9 @@ public enum SnapshotMerger {
             wakeTime: byRecovery.lazy.compactMap(\.wakeTime).first,
             mindfulMinutes: sameDay.compactMap(\.mindfulMinutes).max(),
             strain: byRecovery.lazy.compactMap(\.strain).first,
-            sleepPerformance: byRecovery.lazy.compactMap(\.sleepPerformance).first
+            sleepPerformance: byRecovery.lazy.compactMap(\.sleepPerformance).first,
+            // Carried all day like steps; a Whoop also writes its energy into Apple Health.
+            activeEnergyKcal: bySteps.lazy.compactMap(\.activeEnergyKcal).first
         )
     }
 

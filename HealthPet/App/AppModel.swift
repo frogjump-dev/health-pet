@@ -28,6 +28,8 @@ final class AppModel {
     private(set) var weekDays: [HealthSnapshot] = []
     /// Today's HRV is clearly above the user's own 30-day normal. A bonus line only, never scored.
     private(set) var recoveryBonus = false
+    /// The user's own 30-day normal before today (HRV measured the same way as today's).
+    private(set) var baseline = PersonalBaseline()
     /// On-time nights in a row, up to last night.
     private(set) var onTimeStreak = 0
     /// Each activity's sessions, experience and unlock day; one entry per activity.
@@ -281,6 +283,7 @@ final class AppModel {
         let weekStart = tracker.weekStart(for: now)
         weekDays = snapshots.filter { $0.day >= weekStart && $0.day <= todayStart }.sorted { $0.day < $1.day }
         let baseline = PersonalBaseline.from(history: history, before: todayStart, hrvMethod: todaySnapshot.hrvMethod)
+        self.baseline = baseline
         if let hrv = todaySnapshot.hrvMs, let normal = baseline.hrvMs, baseline.isReliable {
             recoveryBonus = hrv >= normal * 1.05
         } else {

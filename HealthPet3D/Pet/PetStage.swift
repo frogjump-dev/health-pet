@@ -1,0 +1,254 @@
+import SwiftUI
+import WebKit
+
+/// Where the pet stands, in its own 100 × 100 box (the same units as pet.html).
+struct PetAnchors: Equatable, Decodable {
+    var cx: Double
+    var top: Double
+    var bottom: Double
+    /// Height of the eyes.
+    var ey: Double
+    var w: Double
+    var h: Double
+
+    /// Where food goes in, as a fraction of the box: a little under the eyes, never below the feet.
+    var mouth: CGPoint {
+        CGPoint(x: cx / 100, y: min(bottom - 0.1 * h, ey + 0.12 * h) / 100)
+    }
+
+    static let standard = PetAnchors(cx: 50, top: 13.75, bottom: 87, ey: 50, w: 78.7, h: 73.25)
+}
+
+/// What the page shows; any change is sent to the live pet (a different pet or floor re-mounts it).
+struct PetStageConfig: Equatable, Encodable {
+    var pet: String
+    /// The flat pale-sage oval under the pet: home only.
+    var rug = false
+    var shadow = true
+    var dark = false
+    /// Background the pet stands on, so its shadow is tinted for it (nil = the page canvas).
+    var canvas: String? = nil
+    /// At bedtime the pet nods off within seconds instead of minutes.
+    var bedtime = false
+    /// "normal" | "tired" | "sad"
+    var mood = "normal"
+    var interactive = true
+    /// The pet's 100 × 100 box inside the web view: x and size as fractions of the width, y of the height.
+    var box = Box(x: 0.19, y: 0.245, size: 0.62)
+
+    struct Box: Equatable, Encodable {
+        var x: Double
+        var y: Double
+        var size: Double
+    }
+}
+
+/// Talks to one living pet. Calls made before the page is ready wait and are sent once it is.
+@MainActor
+@Observable
+final class PetStageController {
+    private(set) var anchors: PetAnchors?
+    private(set) var isReady = false
+    /// The page has put the pet on screen; until then the still picture stands in for it.
+    private(set) var hasDrawn = false
+    /// Bumped on every tap on the pet (the home shows a short line then).
+    private(set) var tapCount = 0
+    private(set) var lastTapMode = "awake"
+
+    @ObservationIgnored fileprivate weak var webView: WKWebView?
+    @ObservationIgnored private var pending: [String] = []
+
+    func configure(_ config: PetStageConfig) { run("Pet.configure(\(Self.json(config)))") }
+    /// 醒来: only for the first open of the day.
+    func morning() { run("Pet.morning()") }
+    /// cheer, starry, proud, hop, love: plays to the end.
+    func celebrate(_ id: String) { run("Pet.celebrate('\(id)')") }
+    func play(_ id: String) { run("Pet.play('\(id)')") }
+    /// A food bubble reached the pet's mouth.
+    func eat() { run("Pet.eat()") }
+    func activity() { run("Pet.activity()") }
+    func pause(_ paused: Bool) { run("Pet.pause(\(paused))") }
+
+    private func run(_ js: String) {
+        guard isReady, let webView else {
+            pending.append(js)
+            return
+        }
+        webView.evaluateJavaScript(js, completionHandler: nil)
+    }
+
+    fileprivate func attach(_ webView: WKWebView) {
+        self.webView = webView
+        isReady = false
+        hasDrawn = false
+        loadStarted = .now
+    }
+
+    /// The web content process went away (iOS reclaims it in the background): calls wait again
+    /// until the reloaded page is ready, and the still picture comes back meanwhile.
+    fileprivate func pageLost() {
+        isReady = false
+        hasDrawn = false
+        loadStarted = .now
+    }
+
+    /// When the page started loading, for the debug log.
+    @ObservationIgnored private var loadStarted = ContinuousClock.now
+
+    /// Debug builds print how long the page takes (`[pet] ready toast +640ms`) to the console.
+    fileprivate func log(_ text: String) {
+        #if DEBUG
+        let ms = Int((ContinuousClock.now - loadStarted) / .milliseconds(1))
+        // stderr is unbuffered, so the line is there even if the app is ended right after
+        FileHandle.standardError.write(Data("[pet] \(text) +\(ms)ms\n".utf8))
+        #endif
+    }
+
+    fileprivate func receive(_ body: Any) {
+        guard let message = body as? [String: Any], let type = message["type"] as? String else { return }
+        switch type {
+        case "ready":
+            if let raw = message["anchors"], let data = try? JSONSerialization.data(withJSONObject: raw) {
+                anchors = try? JSONDecoder().decode(PetAnchors.self, from: data)
+            }
+            isReady = true
+            log("ready \(message["pet"] as? String ?? "?")")
+            let queued = pending
+            pending = []
+            queued.forEach(run)
+        case "drawn":
+            hasDrawn = true
+            log("drawn \(message["pet"] as? String ?? "?")")
+        case "tap":
+            lastTapMode = message["mode"] as? String ?? "awake"
+            tapCount += 1
+        case "error":
+            log("page error: \(message["message"] as? String ?? "?")")
+        default:
+            break
+        }
+    }
+
+    static func json<T: Encodable>(_ value: T) -> String {
+        (try? String(data: JSONEncoder().encode(value), encoding: .utf8)) ?? "{}"
+    }
+}
+
+/// The living 3D pet (pet.html in a transparent web view). Only the pet's own box takes touches:
+/// tap, several taps, press and hold.
+struct PetStageView: UIViewRepresentable {
+    let controller: PetStageController
+    let config: PetStageConfig
+
+    func makeCoordinator() -> Coordinator { Coordinator(controller: controller) }
+
+    func makeUIView(context: Context) -> WKWebView {
+        let content = WKUserContentController()
+        content.add(context.coordinator, name: "pet")
+        content.addUserScript(WKUserScript(source: "window.PET_INIT = \(PetStageController.json(config));",
+                                           injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        let configuration = WKWebViewConfiguration()
+        configuration.userContentController = content
+        configuration.suppressesIncrementalRendering = true
+
+        let web = WKWebView(frame: .zero, configuration: configuration)
+        web.navigationDelegate = context.coordinator
+        web.isOpaque = false
+        web.backgroundColor = .clear
+        web.scrollView.backgroundColor = .clear
+        web.scrollView.isScrollEnabled = false
+        web.scrollView.bounces = false
+        web.scrollView.contentInsetAdjustmentBehavior = .never
+        web.allowsLinkPreview = false
+        #if DEBUG
+        web.isInspectable = true
+        #endif
+        controller.attach(web)
+        context.coordinator.lastConfig = config
+        Self.load(web)
+        return web
+    }
+
+    fileprivate static func load(_ web: WKWebView) {
+        guard let url = Bundle.main.url(forResource: "pet", withExtension: "html") else { return }
+        web.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent())
+    }
+
+    func updateUIView(_ web: WKWebView, context: Context) {
+        guard context.coordinator.lastConfig != config else { return }
+        context.coordinator.lastConfig = config
+        controller.configure(config)
+    }
+
+    static func dismantleUIView(_ web: WKWebView, coordinator: Coordinator) {
+        web.configuration.userContentController.removeScriptMessageHandler(forName: "pet")
+        web.navigationDelegate = nil
+    }
+
+    final class Coordinator: NSObject, WKScriptMessageHandler, WKNavigationDelegate {
+        weak var controller: PetStageController?
+        var lastConfig: PetStageConfig?
+
+        init(controller: PetStageController) {
+            self.controller = controller
+        }
+
+        func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+            let body = message.body
+            MainActor.assumeIsolated { controller?.receive(body) }
+        }
+
+        /// iOS can end the page's process while the app is in the background; load the pet again,
+        /// starting from what the app shows now rather than what it showed at first.
+        func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+            MainActor.assumeIsolated {
+                controller?.log("web content process ended, reloading")
+                controller?.pageLost()
+                if let config = lastConfig {
+                    let content = webView.configuration.userContentController
+                    content.removeAllUserScripts()
+                    content.addUserScript(WKUserScript(source: "window.PET_INIT = \(PetStageController.json(config));",
+                                                       injectionTime: .atDocumentStart, forMainFrameOnly: true))
+                }
+                PetStageView.load(webView)
+            }
+        }
+
+        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            MainActor.assumeIsolated { controller?.log("page loaded") }
+        }
+
+        func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+            MainActor.assumeIsolated { controller?.log("page failed: \(error.localizedDescription)") }
+        }
+
+        func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+            MainActor.assumeIsolated { controller?.log("page failed to start: \(error.localizedDescription)") }
+        }
+    }
+}
+
+/// The living pet, with its still picture standing in at the same place until the page has drawn
+/// it: a web view takes a moment to start, longer on a cold launch or a slow phone.
+struct LivePet: View {
+    let controller: PetStageController
+    let config: PetStageConfig
+
+    var body: some View {
+        GeometryReader { geo in
+            let side = CGFloat(config.box.size) * geo.size.width
+            ZStack(alignment: .topLeading) {
+                PetStageView(controller: controller, config: config)
+                if !controller.hasDrawn, let pet = Pet3D.with(id: config.pet) {
+                    PetPicture(pet: pet)
+                        .frame(width: side, height: side)
+                        .offset(x: CGFloat(config.box.x) * geo.size.width, y: CGFloat(config.box.y) * geo.size.height)
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
+                        .transition(.opacity)
+                }
+            }
+            .animation(.easeOut(duration: 0.2), value: controller.hasDrawn)
+        }
+    }
+}

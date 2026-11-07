@@ -29,9 +29,10 @@ struct DemoHealthProvider: HealthDataProvider {
             // Up most mornings by 07:00, now and then a lie-in; a short meditation a couple of times a week.
             let wakeMinute = Int.random(in: -40...25, using: &generator)
             let meditated = Int.random(in: 0..<3, using: &generator) == 0
+            let steps = Int.random(in: 6_000...12_500, using: &generator)
             result.append(HealthSnapshot(
                 day: day, source: .mock,
-                steps: Int.random(in: 6_000...12_500, using: &generator),
+                steps: steps,
                 sleepHours: shortNight ? 5 : Double.random(in: 7...8, using: &generator),
                 hrvMs: Double.random(in: 45...55, using: &generator), hrvMethod: .sdnn,
                 restingHeartRate: Double.random(in: 58...62, using: &generator),
@@ -40,7 +41,9 @@ struct DemoHealthProvider: HealthDataProvider {
                 workoutType: workedOut ? workoutType : nil,
                 workouts: workedOut ? [WorkoutSession(name: workoutType, minutes: workoutMinutes)] : [],
                 wakeTime: Self.wake(day: day, minutesAfter7am: wakeMinute),
-                mindfulMinutes: meditated ? 10 : nil
+                mindfulMinutes: meditated ? 10 : nil,
+                // about 30 kcal per 1,000 steps, plus ~8 kcal a workout minute
+                activeEnergyKcal: Double(steps) * 0.03 + (workedOut ? workoutMinutes * 8 : 0)
             ))
             day = calendar.date(byAdding: .day, value: 1, to: day)!
         }
@@ -52,14 +55,16 @@ struct DemoHealthProvider: HealthDataProvider {
         switch scenario {
         case .golden: HealthSnapshot(day: day, source: .mock, steps: 8_214, sleepHours: 7.5, hrvMs: 50, hrvMethod: .sdnn, restingHeartRate: 60,
                                      sleepOnset: Self.onset(nightEnding: day, minutesAfter11pm: 5), workoutMinutes: 32, workoutType: "Run",
-                                     workouts: [WorkoutSession(name: "Run", minutes: 32)], wakeTime: Self.wake(day: day, minutesAfter7am: -15))
+                                     workouts: [WorkoutSession(name: "Run", minutes: 32)], wakeTime: Self.wake(day: day, minutesAfter7am: -15),
+                                     activeEnergyKcal: 412)
         case .burnt:  HealthSnapshot(day: day, source: .mock, steps: 5_000, sleepHours: 4.5, hrvMs: 48, hrvMethod: .sdnn, restingHeartRate: 62,
-                                     sleepOnset: Self.onset(nightEnding: day, minutesAfter11pm: 150))
+                                     sleepOnset: Self.onset(nightEnding: day, minutesAfter11pm: 150), activeEnergyKcal: 160)
         case .soggy:  HealthSnapshot(day: day, source: .mock, steps: 3_000, sleepHours: 7.2, hrvMs: 30, hrvMethod: .sdnn, restingHeartRate: 68,
-                                     sleepOnset: Self.onset(nightEnding: day, minutesAfter11pm: -10))
+                                     sleepOnset: Self.onset(nightEnding: day, minutesAfter11pm: -10), activeEnergyKcal: 95)
         case .fresh:  HealthSnapshot(day: day, source: .mock, steps: 12_000, sleepHours: 8.3, hrvMs: 68, hrvMethod: .sdnn, restingHeartRate: 55,
                                      sleepOnset: Self.onset(nightEnding: day, minutesAfter11pm: -40), workoutMinutes: 45, workoutType: "Yoga",
-                                     workouts: [WorkoutSession(name: "Yoga", minutes: 45)], wakeTime: Self.wake(day: day, minutesAfter7am: -30))
+                                     workouts: [WorkoutSession(name: "Yoga", minutes: 45)], wakeTime: Self.wake(day: day, minutesAfter7am: -30),
+                                     activeEnergyKcal: 640)
         }
     }
 

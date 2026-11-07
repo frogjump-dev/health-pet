@@ -1,0 +1,13 @@
+{
+  "name": "healthpet3d-petweb",
+  "private": true,
+  "description": "Builds Resources/pet.html: the 3D slice pet (open-bot-avatar + the 3D方案 expression engine) for the HealthPet 3D app's web view.",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "0.24.2",
+    "open-bot-avatar": "0.1.2"
+  }
+}
