@@ -19,6 +19,10 @@ xcodebuild -project HealthPet.xcodeproj -scheme HealthPet3D \
   CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES build
 ```
 
+模拟器截图（不开 Simulator.app，结束时自动关掉模拟器）：上面的命令加 `-derivedDataPath build/dd` 构建，然后
+`HealthPet3D/tools/sim-shots.sh <模拟器 UDID> <输出目录>`。每次启动的日志在输出目录的 `console-*.log`，
+`[pet]` 开头的行是宠物网页的加载用时和报错。
+
 ## 结构
 
 ```
@@ -39,6 +43,7 @@ HealthPet3D/
 
 - 一个离线网页：open-bot-avatar 0.1.2（MIT）+ 3D方案 表情引擎 engine.js + 活宠物导演 live.js（和预览页同一份代码，没有改）+ `PetWeb/src/bridge.js`（App 和宠物之间的接口）。
 - 只有首页和宠物详情页的宠物是活的；Pets 格子和分享卡用静态图（由同一个 3D 宠物渲染）。
+  网页启动要一点时间，这期间同一位置先显示静态图，宠物画出来后淡掉；iOS 在后台回收了网页进程时会自动重新加载。
 - 改了 `PetWeb/src/` 以后：`cd HealthPet3D/PetWeb && npm install && npm run build`，会重新生成 `Resources/PetWeb/pet.html`。
   重新渲染静态图和图标：`node tools/stills.js ../Resources/PetWeb/pet.html <输出目录>`（需要 Playwright）。
 - 表情规则沿用预览：点一下随机害羞 / 吓一跳 / 歪头 / 眨眼，连点 3 下被挠痒，6 下晕乎乎，按住被摸摸；没人碰 45 秒犯困、2 分钟睡着；

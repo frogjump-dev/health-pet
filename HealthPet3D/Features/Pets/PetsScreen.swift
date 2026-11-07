@@ -126,7 +126,7 @@ struct PetDetailScreen: View {
             let side = min(w * 0.62, h * 0.74)
             ZStack {
                 if unlocked, w > 1 {
-                    PetStageView(controller: stage, config: PetStageConfig(
+                    LivePet(controller: stage, config: PetStageConfig(
                         pet: pet.id, rug: false, dark: scheme == .dark, canvas: Jade.cardHex(dark: scheme == .dark),
                         box: .init(x: Double((w - side) / 2 / w), y: Double((h - side) / 2 / h), size: Double(side / w))))
                 } else {

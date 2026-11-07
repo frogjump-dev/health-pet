@@ -44,6 +44,8 @@ function mount() {
   stage.style.transformOrigin = `${a.cx}% ${a.bottom}%`;
   post({ type: 'ready', pet: p.def.id, anchors: { cx: a.cx, top: a.top, bottom: a.bottom, ey: a.ey, w: a.w, h: a.h } });
   run();
+  // two frames later the pet is on screen: the app takes away the still picture it showed meanwhile
+  requestAnimationFrame(() => requestAnimationFrame(() => post({ type: 'drawn', pet: p.def.id })));
 }
 
 /** A posed, motionless frame, for the pictures the app shows in grids and share cards. */

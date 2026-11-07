@@ -14,7 +14,7 @@ struct MemoriesScreen: View {
                 PetPicture(pet: model.mainPet3D, happy: true).frame(width: 52, height: 52)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("\(model.daysTogether)").font(.rounded(28, .bold)).foregroundStyle(Jade.ink).monospacedDigit()
-                    Label("days together", systemImage: "heart")
+                    Label(model.daysTogether == 1 ? "day together" : "days together", systemImage: "heart")
                         .font(.rounded(13, .semibold))
                         .foregroundStyle(Jade.ink2)
                 }

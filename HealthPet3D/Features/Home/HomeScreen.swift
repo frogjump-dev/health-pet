@@ -103,7 +103,7 @@ struct HomeScreen: View {
             let layout = HomeLayout(size: size, anchors: stage.anchors ?? .standard)
             let bubbles = model.foodBubbles { home.eatenValue($0) }
             ZStack(alignment: .topLeading) {
-                PetStageView(controller: stage, config: stageConfig(pet: pet, box: layout.box))
+                LivePet(controller: stage, config: stageConfig(pet: pet, box: layout.box))
                     .frame(width: size.width, height: size.height)
                     .accessibilityLabel("\(pet.name). Tap, tap again, or hold.")
 
