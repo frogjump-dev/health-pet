@@ -3,6 +3,8 @@ import PetCore
 
 /// Share: swipe between cards (This week · Today · My pets); the options button holds the two
 /// privacy switches; one Share button (the system sheet has Save Image).
+/// Card v2 (PRD v0.2 §6, decided 2026-11-08): the reader is someone else, so a card has an
+/// identity title and one plain line; the biggest number is every 自律周 so far.
 struct ShareScreen: View {
     @Environment(AppModel.self) private var model
     @Environment(HomeState.self) private var home
@@ -13,7 +15,7 @@ struct ShareScreen: View {
     @State private var image: Image?
 
     var body: some View {
-        let data = ShareCard.Facts(model: model, userName: home.userName, showNumbers: showNumbers, showBedtimes: showBedtimes)
+        let facts = ShareCard.Facts(model: model, home: home, showNumbers: showNumbers, showBedtimes: showBedtimes)
         VStack(alignment: .leading, spacing: 0) {
             PageHeader(title: "Share") {
                 Menu {
@@ -27,47 +29,82 @@ struct ShareScreen: View {
             .padding(.horizontal, Metrics.gutter)
             TabView(selection: $page) {
                 ForEach(ShareCard.Kind.allCases) { kind in
-                    ShareCard(kind: kind, data: data)
+                    ShareCard(kind: kind, facts: facts)
                         .padding(.horizontal, Metrics.gutter)
                         .tag(kind)
                 }
             }
             .tabViewStyle(.page(indexDisplayMode: .never))
-            .frame(height: ShareCard.side + 20)
+            .frame(height: ShareCard.height + 16)
             .padding(.top, 18)
             PageDots(count: ShareCard.Kind.allCases.count, current: page.rawValue)
                 .frame(maxWidth: .infinity)
                 .padding(.top, 6)
             Spacer(minLength: 16)
-            Group {
-                if let image {
-                    ShareLink(item: image, preview: SharePreview("HealthPet", image: image)) {
-                        Label("Share", systemImage: "square.and.arrow.up")
-                    }
-                } else {
-                    Button {} label: { Label("Share", systemImage: "square.and.arrow.up") }.disabled(true)
-                }
-            }
-            .buttonStyle(PillButtonStyle(primary: true))
-            .padding(.horizontal, Metrics.gutter)
-            .padding(.bottom, 12)
+            ShareCardButton(image: image)
+                .padding(.horizontal, Metrics.gutter)
+                .padding(.bottom, 12)
         }
         .padding(.top, 8)
         .background(Jade.canvas.ignoresSafeArea())
         .toolbar(.hidden, for: .navigationBar)
         .task(id: "\(page.rawValue)-\(showNumbers)-\(showBedtimes)-\(scheme == .dark)") {
-            image = render(ShareCard(kind: page, data: data))
+            image = ShareCard.render(ShareCard(kind: page, facts: facts), scheme: scheme)
         }
     }
+}
 
-    private func render(_ card: ShareCard) -> Image? {
-        let renderer = ImageRenderer(content: card
-            .frame(width: ShareCard.side, height: ShareCard.side)
-            .padding(14)
-            .background(Jade.canvas)
-            .environment(\.colorScheme, scheme))
-        renderer.scale = 3
-        return renderer.uiImage.map { Image(uiImage: $0) }
+/// The moment a 自律周 counts (after the cheer on home): the week's card slides up. Share / Not now.
+struct WeekAchievedSheet: View {
+    @Environment(AppModel.self) private var model
+    @Environment(HomeState.self) private var home
+    @Environment(\.colorScheme) private var scheme
+    @Environment(\.dismiss) private var dismiss
+    @AppStorage("3d.share.numbers") private var showNumbers = true
+    @AppStorage("3d.share.bedtimes") private var showBedtimes = false
+    @State private var image: Image?
+
+    var body: some View {
+        let facts = ShareCard.Facts(model: model, home: home, showNumbers: showNumbers, showBedtimes: showBedtimes)
+        VStack(spacing: 10) {
+            ShareCard(kind: .week, facts: facts)
+                .frame(width: ShareCard.exportWidth)
+                .padding(.top, 20)
+            ShareCardButton(image: image)
+                .frame(width: ShareCard.exportWidth)
+                .padding(.top, 4)
+            Button("Not now") { dismiss() }
+                .font(.rounded(15, .bold))
+                .foregroundStyle(Jade.ink2)
+                .frame(height: 36)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.bottom, 12)
+        .background(Jade.canvas.ignoresSafeArea())
+        .presentationDetents([.height(ShareCard.height + 150)])
+        .presentationDragIndicator(.visible)
+        .presentationCornerRadius(32)
+        .task(id: scheme == .dark) {
+            image = ShareCard.render(ShareCard(kind: .week, facts: facts), scheme: scheme)
+        }
+    }
+}
+
+/// The one Share button: the system sheet (with Save Image) for the rendered card.
+struct ShareCardButton: View {
+    let image: Image?
+
+    var body: some View {
+        Group {
+            if let image {
+                ShareLink(item: image, preview: SharePreview("HealthPet", image: image)) {
+                    Label("Share", systemImage: "square.and.arrow.up")
+                }
+            } else {
+                Button {} label: { Label("Share", systemImage: "square.and.arrow.up") }.disabled(true)
+            }
+        }
+        .buttonStyle(PillButtonStyle(primary: true))
     }
 }
 
@@ -88,7 +125,9 @@ struct PageDots: View {
     }
 }
 
-/// One share card. Only the title + check, the pets, three numbers, and the name/date line.
+/// One share card, top to bottom: a stamp (what was achieved), the identity title, one plain line,
+/// the pets on their oval (main pet in the middle, chest out, every pet with its Lv), then every
+/// 自律周 so far as the biggest number, and name · date · HealthPet.
 struct ShareCard: View {
     enum Kind: Int, CaseIterable, Identifiable {
         case week, today, pets
@@ -96,49 +135,53 @@ struct ShareCard: View {
     }
 
     struct Facts {
-        var weekNumber: Int
+        var title: String
         var weekDone: Bool
         var workouts: Int
-        var workoutsGoal: Int
         var nights: Int
-        var nightsGoal: Int
-        var weekSteps: Int
         var todayDone: Bool
         var onset: Date?
         var onTime: Bool
         var workoutMinutes: Int?
         var workoutName: String?
         var todaySteps: Int?
-        var main: Pet3D
+        var weeks: Int
+        var left: SharePet?
+        var main: SharePet
+        var right: SharePet?
         /// Unlocked pets, main first, then highest level.
         var pets: [SharePet]
+        var petsAvailable: Int
+        /// The main pet stands proud, except in a low week (没电), when it just stands.
+        var mainProud: Bool
         var weekFooter: String
         var todayFooter: String
         var showNumbers: Bool
         var showBedtimes: Bool
 
         @MainActor
-        init(model: AppModel, userName: String, showNumbers: Bool, showBedtimes: Bool) {
-            let rules = model.discipline.rules
-            weekNumber = model.weekNumber
+        init(model: AppModel, home: HomeState, showNumbers: Bool, showBedtimes: Bool) {
+            title = model.identityTitle
             weekDone = model.week?.isDisciplined ?? false
-            workouts = min(model.week?.workouts ?? 0, rules.workoutsPerWeek)
-            workoutsGoal = rules.workoutsPerWeek
-            nights = min(model.week?.onTimeNights ?? 0, rules.onTimeNightsPerWeek)
-            nightsGoal = rules.onTimeNightsPerWeek
-            weekSteps = model.weekSteps
+            workouts = model.week?.workouts ?? 0
+            nights = model.week?.onTimeNights ?? 0
             todayDone = model.checkInsToday > 0
             onset = model.today?.sleepOnset
             onTime = model.sleptOnTime
             workoutMinutes = model.mainWorkout.map { Int($0.minutes.rounded()) }
             workoutName = model.mainWorkout?.name
             todaySteps = model.today?.steps
-            main = model.mainPet3D
-            let records = model.petRecords.filter(\.isUnlocked)
-            let mainRecord = records.first { $0.pet.id == model.mainPet3D.id }
-            pets = ([mainRecord].compactMap { $0 } + records.filter { $0.pet.id != model.mainPet3D.id })
-                .map { SharePet(pet: $0.pet, level: $0.level) }
-            let name = userName.trimmingCharacters(in: .whitespaces)
+            weeks = model.disciplinedWeekTotal
+            let trio = model.showOffPets
+            left = trio.left.map(SharePet.init)
+            main = SharePet(trio.main)
+            right = trio.right.map(SharePet.init)
+            let records = model.petRecords
+            let unlocked = records.filter(\.isUnlocked)
+            pets = ([trio.main] + unlocked.filter { $0.pet.id != trio.main.pet.id }).map(SharePet.init)
+            petsAvailable = records.count
+            mainProud = (home.energyOverride ?? model.energy) != .low
+            let name = home.userName.trimmingCharacters(in: .whitespaces)
             let prefix = name.isEmpty ? "" : "\(name) · "
             let range = model.weekRange
             weekFooter = prefix + Format.range(range.start, range.end)
@@ -148,99 +191,194 @@ struct ShareCard: View {
         }
     }
 
-    static let side: CGFloat = 340
+    /// The card's height on screen and in the exported picture.
+    static let height: CGFloat = 446
+    /// Width of the exported picture's card (plus a canvas margin around it).
+    static let exportWidth: CGFloat = 340
 
     let kind: Kind
-    let data: Facts
+    let facts: Facts
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .center) {
-                Text(title).font(.rounded(34, .bold)).foregroundStyle(Jade.ink)
-                Spacer()
-                if done { CheckBadge(color: Jade.sleep, size: 26) }
-            }
-            Spacer(minLength: 8)
-            pictures
-                .frame(maxWidth: .infinity)
-            Rectangle().fill(Jade.fill).frame(height: 1).padding(.top, 6)
-            stats
-                .padding(.top, 14)
-            HStack {
-                Text(kind == .today ? data.todayFooter : data.weekFooter)
-                    .font(.rounded(10, .medium))
-                    .foregroundStyle(Jade.ink2)
-                Spacer()
-                Text("HealthPet").font(.rounded(12, .bold)).foregroundStyle(Jade.ink)
-            }
-            .padding(.top, 16)
+            stamp
+                .frame(height: 26)
+            Text(facts.title)
+                .font(.rounded(34, .heavy))
+                .tracking(-1.2)
+                .foregroundStyle(Jade.ink)
+                .lineLimit(2)
+                .minimumScaleFactor(0.7)
+                .lineSpacing(-4)
+                .padding(.top, 16)
+            plainLine
+                .padding(.top, 12)
+            Spacer(minLength: 4)
+            stage
+                .frame(height: 168)
+            footer
         }
-        .padding(22)
-        .frame(height: Self.side)
-        .background(RoundedRectangle(cornerRadius: Metrics.card, style: .continuous).fill(Jade.card))
+        .padding(.horizontal, 24)
+        .padding(.top, 24)
+        .padding(.bottom, 20)
+        .frame(height: Self.height)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 32, style: .continuous).fill(Jade.card))
+        .accessibilityElement(children: .combine)
     }
 
-    private var title: String {
-        switch kind {
-        case .week: "Week \(data.weekNumber)"
-        case .today: "Today"
-        case .pets: data.pets.count == 1 ? "1 pet" : "\(data.pets.count) pets"
-        }
-    }
-
-    private var done: Bool {
-        switch kind {
-        case .week: data.weekDone
-        case .today: data.todayDone
-        case .pets: false
-        }
-    }
+    // MARK: - Stamp: what was achieved (lime capsule + check)
 
     @ViewBuilder
-    private var pictures: some View {
+    private var stamp: some View {
         switch kind {
-        case .week, .today:
-            let friends = data.pets.dropFirst().prefix(kind == .week ? 2 : 0).map(\.pet)
-            HStack(alignment: .bottom, spacing: -6) {
-                if let left = friends.first { PetPicture(pet: left).frame(width: 74, height: 74) }
-                PetPicture(pet: data.main, happy: true).frame(width: 124, height: 124).zIndex(1)
-                if friends.count > 1 { PetPicture(pet: friends[1]).frame(width: 74, height: 74) }
-            }
+        case .week:
+            if facts.weekDone { Stamp(text: "Disciplined week") } else { Color.clear }
+        case .today:
+            if facts.todayDone { Stamp(text: "Checked in today") } else { Color.clear }
         case .pets:
-            let shown = Array(data.pets.prefix(8))
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 4), spacing: 4) {
-                ForEach(shown) { item in
-                    VStack(spacing: 1) {
-                        PetPicture(pet: item.pet, happy: item.pet.id == data.main.id).frame(width: 52, height: 52)
-                        Text("Lv \(item.level)").font(.rounded(9, .bold)).foregroundStyle(Jade.ink2)
-                    }
-                }
-            }
+            Stamp(text: facts.pets.count == 1 ? "1 pet" : "\(facts.pets.count) pets", check: false)
         }
     }
 
+    // MARK: - One plain line
+
     @ViewBuilder
-    private var stats: some View {
-        HStack(spacing: 22) {
+    private var plainLine: some View {
+        HStack(spacing: 6) {
             switch kind {
             case .week:
-                Stat(icon: "waveform.path.ecg", text: "\(data.workouts)/\(data.workoutsGoal)")
-                Stat(icon: "moon", text: "\(data.nights)/\(data.nightsGoal)")
-                if data.showNumbers { Stat(icon: "shoeprints.fill", text: Format.short(data.weekSteps)) }
+                LineItem(icon: "waveform.path.ecg", color: Jade.accent,
+                         text: facts.workouts == 1 ? "1 workout" : "\(facts.workouts) workouts")
+                Dot()
+                LineItem(icon: "moon", color: Jade.sleep,
+                         text: facts.nights == 1 ? "1 early night" : "\(facts.nights) early nights")
             case .today:
-                if let onset = data.onset {
-                    if data.showBedtimes { Stat(icon: "moon", text: Format.time(onset)) }
-                    else if data.onTime { Stat(icon: "moon", text: "✓") }
+                ForEach(Array(todayParts.enumerated()), id: \.offset) { i, part in
+                    if i > 0 { Dot() }
+                    LineItem(icon: part.icon, color: part.color, text: part.text)
                 }
-                if let minutes = data.workoutMinutes {
-                    Stat(icon: workoutIcon(data.workoutName), text: data.showNumbers ? "\(minutes)m" : "✓")
-                }
-                if data.showNumbers, let steps = data.todaySteps { Stat(icon: "shoeprints.fill", text: Format.short(steps)) }
+                if todayParts.isEmpty { LineItem(icon: "sun.max", color: Jade.ink3, text: "A quiet day") }
             case .pets:
-                Stat(icon: "star", text: "Lv \(data.pets.map(\.level).max() ?? 1)")
-                Stat(icon: "pawprint", text: "\(data.pets.count)/\(Pet3D.all.count)")
+                LineItem(icon: "pawprint", color: Jade.accent, text: "\(facts.pets.count) of \(facts.petsAvailable) pets")
+                Dot()
+                LineItem(icon: "star", color: Jade.sleep, text: "Lv \(facts.pets.map(\.level).max() ?? 0) top")
             }
         }
+        .lineLimit(1)
+        .minimumScaleFactor(0.75)
+    }
+
+    private var todayParts: [(icon: String, color: Color, text: String)] {
+        var parts: [(icon: String, color: Color, text: String)] = []
+        if let minutes = facts.workoutMinutes, let name = facts.workoutName {
+            parts.append((workoutIcon(name), Jade.accent, facts.showNumbers ? "\(name) \(minutes) min" : name))
+        }
+        if let onset = facts.onset {
+            if facts.showBedtimes { parts.append(("moon", Jade.sleep, "Asleep \(Format.time(onset))")) }
+            else if facts.onTime { parts.append(("moon", Jade.sleep, "On time")) }
+        }
+        if facts.showNumbers, let steps = facts.todaySteps, steps > 0 {
+            parts.append(("shoeprints.fill", Jade.accent, "\(Format.short(steps)) steps"))
+        }
+        return Array(parts.prefix(2))
+    }
+
+    // MARK: - The pets on their oval
+
+    @ViewBuilder
+    private var stage: some View {
+        GeometryReader { geo in
+            let w = geo.size.width, h = geo.size.height
+            ZStack {
+                Ellipse()
+                    .fill(Jade.accent.opacity(0.18))
+                    .frame(width: min(240, w * 0.85), height: 44)
+                    .position(x: w / 2, y: h - 14 - 22)
+                switch kind {
+                case .week, .today:
+                    trio(w: w, h: h)
+                case .pets:
+                    grid(w: w, h: h)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func trio(w: CGFloat, h: CGFloat) -> some View {
+        if let left = facts.left {
+            PetPicture(pet: left.pet).frame(width: 86, height: 86)
+                .position(x: w * 0.17, y: h - 26 - 43)
+            LevelChip(level: left.level).position(x: w * 0.17, y: h - 10)
+        }
+        if let right = facts.right {
+            PetPicture(pet: right.pet).frame(width: 84, height: 84)
+                .position(x: w * 0.83, y: h - 26 - 42)
+            LevelChip(level: right.level).position(x: w * 0.83, y: h - 10)
+        }
+        PetPicture(pet: facts.main.pet, happy: !facts.mainProud, proud: facts.mainProud)
+            .frame(width: 130, height: 130)
+            .position(x: w / 2, y: h - 22 - 65)
+        LevelChip(level: facts.main.level).position(x: w / 2, y: h - 10)
+    }
+
+    @ViewBuilder
+    private func grid(w: CGFloat, h: CGFloat) -> some View {
+        let shown = Array(facts.pets.prefix(5))
+        let step = w / CGFloat(max(shown.count, 1))
+        ForEach(Array(shown.enumerated()), id: \.element.id) { i, item in
+            let main = item.id == facts.main.id
+            let side: CGFloat = main ? 92 : 66
+            let x = step * (CGFloat(i) + 0.5)
+            PetPicture(pet: item.pet, happy: main)
+                .frame(width: side, height: side)
+                .position(x: x, y: h - 26 - side / 2)
+            LevelChip(level: item.level).position(x: x, y: h - 10)
+        }
+    }
+
+    // MARK: - Footer: every 自律周 so far · name and date · HealthPet
+
+    private var footer: some View {
+        HStack(alignment: .bottom) {
+            HStack(alignment: .firstTextBaseline, spacing: 7) {
+                Text("\(facts.weeks)")
+                    .font(.rounded(40, .heavy))
+                    .foregroundStyle(Jade.ink)
+                    .monospacedDigit()
+                Text(facts.weeks == 1 ? "disciplined\nweek" : "disciplined\nweeks")
+                    .font(.rounded(13, .semibold))
+                    .foregroundStyle(Jade.ink3)
+                    .lineSpacing(-2)
+                    .fixedSize()
+            }
+            Spacer(minLength: 8)
+            VStack(alignment: .trailing, spacing: 2) {
+                Text(kind == .week ? facts.weekFooter : facts.todayFooter)
+                    .font(.rounded(11, .medium))
+                    .foregroundStyle(Jade.ink2)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                Text("HealthPet").font(.rounded(14, .heavy)).foregroundStyle(Jade.ink)
+            }
+        }
+        .padding(.top, 14)
+        .overlay(alignment: .top) { Rectangle().fill(Jade.fill).frame(height: 1) }
+        .padding(.top, 6)
+    }
+
+    // MARK: - Export
+
+    @MainActor
+    static func render(_ card: ShareCard, scheme: ColorScheme) -> Image? {
+        let renderer = ImageRenderer(content: card
+            .frame(width: exportWidth, height: height)
+            .padding(14)
+            .background(Jade.canvas)
+            .environment(\.colorScheme, scheme))
+        renderer.scale = 3
+        return renderer.uiImage.map { Image(uiImage: $0) }
     }
 }
 
@@ -248,16 +386,62 @@ struct SharePet: Identifiable {
     let pet: Pet3D
     let level: Int
     var id: String { pet.id }
+
+    init(_ record: PetRecord) {
+        pet = record.pet
+        level = record.level
+    }
 }
 
-private struct Stat: View {
+/// The lime capsule stamp at the top of a card.
+private struct Stamp: View {
+    let text: String
+    var check = true
+
+    var body: some View {
+        HStack(spacing: 5) {
+            if check {
+                Image(systemName: "checkmark").font(.system(size: 10, weight: .black))
+            }
+            Text(text.uppercased()).font(.rounded(11, .heavy)).tracking(0.7)
+        }
+        .foregroundStyle(Jade.onSleep)
+        .padding(.leading, check ? 9 : 11)
+        .padding(.trailing, 11)
+        .frame(height: 26)
+        .background(Capsule().fill(Jade.sleep))
+    }
+}
+
+private struct LineItem: View {
     let icon: String
+    let color: Color
     let text: String
 
     var body: some View {
         HStack(spacing: 5) {
-            Image(systemName: icon).font(.system(size: 13, weight: .semibold)).foregroundStyle(Jade.ink2)
-            Text(text).font(.rounded(18, .bold)).foregroundStyle(Jade.ink).monospacedDigit()
+            Image(systemName: icon).font(.system(size: 13, weight: .bold)).foregroundStyle(color)
+            Text(text).font(.rounded(15, .heavy)).foregroundStyle(Jade.ink2)
         }
+    }
+}
+
+private struct Dot: View {
+    var body: some View {
+        Text("·").font(.rounded(15, .heavy)).foregroundStyle(Jade.ink3)
+    }
+}
+
+private struct LevelChip: View {
+    let level: Int
+
+    var body: some View {
+        Text("Lv \(level)")
+            .font(.rounded(11, .heavy))
+            .foregroundStyle(Jade.ink)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 3)
+            .background(Capsule().fill(Jade.fill))
+            .fixedSize()
     }
 }

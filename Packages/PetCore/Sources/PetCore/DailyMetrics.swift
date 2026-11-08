@@ -1,11 +1,12 @@
 import Foundation
 
-/// The day's numbers behind the 3D home screen: the daily-load food bubble and the three
-/// status bars (recovery, HRV, sleep onset). Bars are "fuller = more rested" and never red.
+/// The day's numbers behind the 3D app: the daily load and the rest estimate. Bars are
+/// "fuller = more rested" and never red.
 ///
 /// Apple Watch has no recovery or load score that apps can read, so for Apple Health days
 /// both are estimated here, on the phone, from the user's own data. They are our own
-/// estimates and must never be called Strain or Recovery Score in the UI.
+/// estimates: the UI calls them Daily load and Rest, never Strain or Recovery (PRD v0.2).
+/// Home shows the load only when it is Whoop's strain, and the rest bar without a number.
 public enum DailyMetrics {
     /// Upper end of the load scale; the same 0–21 range a Whoop day strain uses, so a
     /// Whoop user and an Apple Watch user read the number the same way.
@@ -61,7 +62,7 @@ public enum DailyMetrics {
     /// then it empties over the next 2.5 hours, never quite to nothing.
     public static func onsetFill(_ day: HealthSnapshot, tracker: DisciplineTracker) -> Double? {
         guard let onset = day.sleepOnset else { return nil }
-        let target = tracker.bedtime.target(forNightEnding: day.day, calendar: tracker.calendar)
+        let target = tracker.target(forNightEnding: day.day)
         let minutesLate = onset.timeIntervalSince(target) / 60 - Double(tracker.rules.bedtimeGraceMinutes)
         guard minutesLate > 0 else { return 1 }
         return max(0.08, 1 - minutesLate / 150)

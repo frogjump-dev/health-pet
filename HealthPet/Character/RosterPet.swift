@@ -108,7 +108,7 @@ struct RosterPet: Identifiable, Equatable {
         // Whoop only, no MBTI.
         RosterPet(id: "honey", name: "Honey", image: "pet_honey", mbti: "", family: .supply, activity: .recoveryMatch),
         RosterPet(id: "warmmilk", name: "Warm Milk", image: "pet_warmmilk", mbti: "", family: .supply, activity: .sleepNeedMet),
-        RosterPet(id: "proteinbar", name: "Protein Bar", image: "pet_proteinbar", mbti: "", family: .supply, activity: .highStrain),
+        RosterPet(id: "proteinbar", name: "Protein Bar", image: "pet_proteinbar", mbti: "", family: .supply, activity: .balancedStreak),
     ]
 
     static func pet(for activity: Activity) -> RosterPet {
@@ -142,7 +142,7 @@ extension Activity {
         case .other: "figure.mixed.cardio"
         case .recoveryMatch: "battery.75percent"
         case .sleepNeedMet: "bed.double.fill"
-        case .highStrain: "flame.fill"
+        case .balancedStreak: "bolt.fill"
         }
     }
 }

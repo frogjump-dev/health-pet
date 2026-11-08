@@ -13,8 +13,10 @@ enum Jade {
     static let ink3 = dynamic(0xA9ADA2, 0x646C5F)
     /// Workouts, check marks, today.
     static let accent = dynamic(0x4B6844, 0x8FAE85)
-    /// Sleep, and the rest bars on home.
+    /// Sleep, and the rest bar on home.
     static let sleep = dynamic(0xBDB65A, 0xD9D387)
+    /// Text and icons on `sleep` (the share card's stamp).
+    static let onSleep = dynamic(0x2D392A, 0x1A2018)
     static let primary = dynamic(0x2D392A, 0xD9D387)
     /// Text and icons on `primary`.
     static let onPrimary = dynamic(0xD9D387, 0x1D231B)
