@@ -8,14 +8,24 @@ public enum Activity: String, Codable, Sendable, CaseIterable, Identifiable {
     case running, strength, hiit, cycling, swimming, hiking
     case yoga, pilates, dance, ballSports, climbing, other
     /// Whoop only (decided 2026-11-02): a day whose strain fits that morning's recovery,
-    /// a night that met Whoop's sleep need, and a high-strain day.
-    case recoveryMatch, sleepNeedMet, highStrain
+    /// a night that met Whoop's sleep need, and (Protein Bar, changed 2026-11-08 from a
+    /// high-strain day) two balanced days in a row.
+    case recoveryMatch, sleepNeedMet, balancedStreak
 
     public var id: String { rawValue }
 
     /// Needs data only a Whoop band provides.
     public var isWhoopOnly: Bool {
-        self == .recoveryMatch || self == .sleepNeedMet || self == .highStrain
+        self == .recoveryMatch || self == .sleepNeedMet || self == .balancedStreak
+    }
+
+    /// A sport or a 10k-step day: what counts as one workout, and what a share card's
+    /// identity title is named after. Sleep, waking, mindfulness and the Whoop pets are habits.
+    public var isWorkout: Bool {
+        switch self {
+        case .onTimeSleep, .earlyRise, .mindfulness, .recoveryMatch, .sleepNeedMet, .balancedStreak: false
+        default: true
+        }
     }
 
     /// Short name for chips and titles, e.g. "Running".
@@ -39,7 +49,7 @@ public enum Activity: String, Codable, Sendable, CaseIterable, Identifiable {
         case .other: "All-rounder"
         case .recoveryMatch: "Balanced day"
         case .sleepNeedMet: "Sleep need met"
-        case .highStrain: "High strain"
+        case .balancedStreak: "Two balanced days"
         }
     }
 
@@ -57,7 +67,7 @@ public enum Activity: String, Codable, Sendable, CaseIterable, Identifiable {
         case .climbing: ("climb", "climbs")
         case .recoveryMatch: ("balanced day", "balanced days")
         case .sleepNeedMet: ("full night", "full nights")
-        case .highStrain: ("big day", "big days")
+        case .balancedStreak: ("balanced pair", "balanced pairs")
         default: ("session", "sessions")
         }
         return "\(count) \(count == 1 ? names.one : names.many)"
@@ -73,7 +83,7 @@ public enum Activity: String, Codable, Sendable, CaseIterable, Identifiable {
         case .other: "A 20-min workout of any other kind"
         case .recoveryMatch: "Whoop: train to match your recovery"
         case .sleepNeedMet: "Whoop: get 85%+ of your sleep need"
-        case .highStrain: "Whoop: reach a day strain of 14"
+        case .balancedStreak: "Whoop: match your recovery two days running"
         default: "One 20-min \(title.lowercased()) workout"
         }
     }
@@ -130,14 +140,20 @@ public struct ActivityTracker: Sendable {
     public var discipline: DisciplineTracker
     public var wakeTarget: WakeTime
     public var minMindfulMinutes: Double = 10
+    /// Saturday and Sunday mornings, when set; otherwise `wakeTarget` every day.
+    public var weekendWakeTarget: WakeTime?
     /// Whoop sleep performance (0-100) that counts as a full night.
     public var minSleepPerformance: Double = 85
-    /// Whoop day strain (0-21) that counts as a big day.
-    public var highStrain: Double = 14
 
-    public init(discipline: DisciplineTracker, wakeTarget: WakeTime) {
+    public init(discipline: DisciplineTracker, wakeTarget: WakeTime, weekendWakeTarget: WakeTime? = nil) {
         self.discipline = discipline
         self.wakeTarget = wakeTarget
+        self.weekendWakeTarget = weekendWakeTarget
+    }
+
+    /// The wake-up target for the morning of `day`.
+    public func wakeTarget(on day: Date) -> WakeTime {
+        discipline.calendar.isDateInWeekend(day) ? weekendWakeTarget ?? wakeTarget : wakeTarget
     }
 
     /// Whether a finished day's strain fit that morning's Whoop recovery: on green (67%+) a
@@ -159,8 +175,9 @@ public struct ActivityTracker: Sendable {
 
         if (day.steps ?? 0) >= rules.activeDaySteps { result.insert(.walking) }
         if discipline.isOnTimeNight(day) == true { result.insert(.onTimeSleep) }
+        let wake = wakeTarget(on: day.day)
         if let woke = day.wakeTime,
-           let target = discipline.calendar.date(bySettingHour: wakeTarget.hour, minute: wakeTarget.minute,
+           let target = discipline.calendar.date(bySettingHour: wake.hour, minute: wake.minute,
                                                  second: 0, of: day.day),
            woke <= target {
             result.insert(.earlyRise)
@@ -168,12 +185,9 @@ public struct ActivityTracker: Sendable {
         if (day.mindfulMinutes ?? 0) >= minMindfulMinutes { result.insert(.mindfulness) }
 
         if (day.sleepPerformance ?? 0) >= minSleepPerformance { result.insert(.sleepNeedMet) }
-        if let strain = day.strain {
-            if strain >= highStrain { result.insert(.highStrain) }
-            if dayIsOver, let recovery = day.vendorRecovery,
-               strainMatchesRecovery(recovery: recovery, strain: strain) {
-                result.insert(.recoveryMatch)
-            }
+        if dayIsOver, let strain = day.strain, let recovery = day.vendorRecovery,
+           strainMatchesRecovery(recovery: recovery, strain: strain) {
+            result.insert(.recoveryMatch)
         }
 
         for workout in day.allWorkouts {
@@ -186,11 +200,29 @@ public struct ActivityTracker: Sendable {
 
     /// Every day's activities, keyed by the start of the day. Days with none are left out.
     /// Days from `today` on are treated as still going (see `activities(on:dayIsOver:)`).
+    /// Two-day streaks (Protein Bar) span days, so they are added over the whole history
+    /// with `withBalancedStreaks(_:)`, never here.
     public func log(_ snapshots: [HealthSnapshot], today: Date? = nil) -> [Date: Set<Activity>] {
         snapshots.reduce(into: [:]) { log, day in
             let done = activities(on: day, dayIsOver: today.map { day.day < $0 } ?? true)
             if !done.isEmpty { log[day.day] = done }
         }
+    }
+
+    /// Protein Bar (decided 2026-11-08): two days in a row whose strain fit the recovery count
+    /// once. In a run of balanced days every second day completes a pair (days 2, 4, 6 …).
+    /// Pass the whole history (not a 30-day window), so a long run is always paired the same way.
+    public func withBalancedStreaks(_ log: [Date: Set<Activity>]) -> [Date: Set<Activity>] {
+        var result = log
+        var run = 0
+        var previous: Date?
+        for day in log.filter({ $0.value.contains(.recoveryMatch) }).keys.sorted() {
+            let follows = previous.flatMap { discipline.calendar.date(byAdding: .day, value: 1, to: $0) } == day
+            run = follows ? run + 1 : 1
+            previous = day
+            if run % 2 == 0 { result[day, default: []].insert(.balancedStreak) }
+        }
+        return result
     }
 }
 

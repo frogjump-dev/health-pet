@@ -12,12 +12,12 @@ BUNDLE="com.healthpet.app3d"
 mkdir -p "$OUT"
 
 shot() { xcrun simctl io "$UDID" screenshot --type=png "$OUT/$1.png" >/dev/null 2>&1 && echo "shot $1"; }
-# launch <log name> [app arguments...]
+# launch <log name> [app arguments...]   (the first open is skipped unless -3d.onboarded NO is passed)
 launch() {
   local name="$1"; shift
   xcrun simctl terminate "$UDID" "$BUNDLE" >/dev/null 2>&1
   xcrun simctl launch --terminate-running-process --stdout="$OUT/console-$name.log" --stderr="$OUT/console-$name.log" \
-    "$UDID" "$BUNDLE" "$@" >/dev/null
+    "$UDID" "$BUNDLE" -3d.onboarded YES "$@" >/dev/null
 }
 
 xcrun simctl boot "$UDID" 2>/dev/null
@@ -26,8 +26,12 @@ xcrun simctl status_bar "$UDID" override --time 9:41 --batteryState charged --ba
 xcrun simctl uninstall "$UDID" "$BUNDLE" >/dev/null 2>&1   # fresh install: the pet wakes up, today is celebrated
 xcrun simctl install "$UDID" "$APP_PATH"
 
-# 1. Home, light: wake-up, the cheer for today's check-ins, then every food bubble eaten
+# 0. The first open (fresh install): hello → the last 30 days (tapped through by hand only)
 xcrun simctl ui "$UDID" appearance light
+launch first-open -3d.onboarded NO
+sleep 3;   shot 00-first-open
+
+# 1. Home, light: wake-up, the morning reveal (proud), today's moments, then every food bubble eaten
 launch home -hp3dFeed all
 sleep 3;   shot 01-home-start
 sleep 2;   shot 02-home-waking
@@ -42,10 +46,16 @@ launch home-dark -hp3dRegrow YES -3d.appearance dark
 sleep 2;   shot 07-home-dark-early
 sleep 4;   shot 08-home-dark
 
+# 2b. Home with a low week (没电: paler floor, sleepy idle) and the 自律周 share card sliding up
+launch home-low -3d.energyOverride low
+sleep 8;   shot 09-home-low
+launch home-weekcard -hp3dWeekCard YES
+sleep 4;   shot 10-home-week-card
+
 # 3. Every page, light and dark (pet pages twice: early and settled)
 for mode in light dark; do
   xcrun simctl ui "$UDID" appearance "$mode"
-  for route in today pets pet:chili pet:marshmallow share memories settings; do
+  for route in today pets locked pet:toast pet:chili share memories settings; do
     name="page-$mode-${route/:/-}"
     launch "$name" -hp3dRoute "$route" -3d.appearance "$mode"
     if [[ "$route" == pet:* ]]; then

@@ -81,11 +81,38 @@ final class ActivityTests: XCTestCase {
         XCTAssertEqual(progress[.swimming]?.level, 0)
     }
 
-    func testWhoopSleepAndStrain() {
+    func testWhoopSleepNeed() {
         let full = HealthSnapshot(day: day(0), source: .whoop, strain: 14.2, sleepPerformance: 85)
-        XCTAssertTrue(tracker.activities(on: full).isSuperset(of: [.sleepNeedMet, .highStrain]))
+        XCTAssertTrue(tracker.activities(on: full).contains(.sleepNeedMet))
         let short = HealthSnapshot(day: day(0), source: .whoop, strain: 13.9, sleepPerformance: 84)
-        XCTAssertTrue(tracker.activities(on: short).isDisjoint(with: [.sleepNeedMet, .highStrain]))
+        XCTAssertFalse(tracker.activities(on: short).contains(.sleepNeedMet))
+    }
+
+    func testAHardDayAloneIsNoLongerAProteinBar() {
+        let hard = HealthSnapshot(day: day(0), source: .whoop, vendorRecovery: 20, strain: 18)
+        XCTAssertFalse(tracker.activities(on: hard).contains(.balancedStreak))
+    }
+
+    func testTwoBalancedDaysInARowCountOnce() {
+        // a run of 5 balanced days (Mon-Fri), a gap, then 1 more (Sun): pairs end on Tue and Thu
+        var log: [Date: Set<Activity>] = [:]
+        for offset in [0, 1, 2, 3, 4, 6] { log[day(offset)] = [.recoveryMatch] }
+        log[day(5)] = [.running]
+        let streaks = tracker.withBalancedStreaks(log)
+        let pairs = streaks.filter { $0.value.contains(.balancedStreak) }.keys.sorted()
+        XCTAssertEqual(pairs, [day(1), day(3)])
+        XCTAssertEqual(streaks[day(5)], [.running])
+        XCTAssertNil(tracker.log([], today: day(0))[day(0)])
+    }
+
+    func testWeekendWakeTarget() {
+        var weekend = tracker
+        weekend.weekendWakeTarget = WakeTime(hour: 9)
+        let saturdayLieIn = HealthSnapshot(day: day(5), source: .healthKit, wakeTime: at(5, 8, 30))
+        XCTAssertTrue(weekend.activities(on: saturdayLieIn).contains(.earlyRise))
+        XCTAssertFalse(tracker.activities(on: saturdayLieIn).contains(.earlyRise))
+        let mondayLate = HealthSnapshot(day: day(0), source: .healthKit, wakeTime: at(0, 8, 30))
+        XCTAssertFalse(weekend.activities(on: mondayLate).contains(.earlyRise))
     }
 
     func testStrainMustFitRecovery() {
@@ -104,6 +131,9 @@ final class ActivityTests: XCTestCase {
     }
 
     func testWhoopActivitiesAreFlagged() {
-        XCTAssertEqual(Activity.allCases.filter(\.isWhoopOnly), [.recoveryMatch, .sleepNeedMet, .highStrain])
+        XCTAssertEqual(Activity.allCases.filter(\.isWhoopOnly), [.recoveryMatch, .sleepNeedMet, .balancedStreak])
+        XCTAssertFalse(Activity.allCases.contains { $0.isWhoopOnly && $0.isWorkout })
+        XCTAssertFalse(Activity.onTimeSleep.isWorkout)
+        XCTAssertTrue(Activity.walking.isWorkout)
     }
 }

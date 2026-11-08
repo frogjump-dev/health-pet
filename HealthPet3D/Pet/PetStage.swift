@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import WebKit
 
 /// Where the pet stands, in its own 100 × 100 box (the same units as pet.html).
@@ -32,6 +33,9 @@ struct PetStageConfig: Equatable, Encodable {
     var bedtime = false
     /// "normal" | "tired" | "sad"
     var mood = "normal"
+    /// The slow condition of the last 7 days (PRD v0.2 §5.5): "lively" | "normal" | "low".
+    /// Only the idle behaviour and the floor's tint change.
+    var energy = "normal"
     var interactive = true
     /// The pet's 100 × 100 box inside the web view: x and size as fractions of the width, y of the height.
     var box = Box(x: 0.19, y: 0.245, size: 0.62)
@@ -43,31 +47,137 @@ struct PetStageConfig: Equatable, Encodable {
     }
 }
 
-/// Talks to one living pet. Calls made before the page is ready wait and are sent once it is.
+/// The app's one living pet (decided 2026-11-08, PRD §9 D1): a single web view, started as the
+/// app launches (warm-up) and handed between the screens that show a live pet (home, a pet's
+/// page). Only the screen that holds it last (`claim`) drives it; the others wait.
+/// Calls made before the page is ready wait and are sent once it is.
 @MainActor
 @Observable
-final class PetStageController {
-    private(set) var anchors: PetAnchors?
+final class PetStage {
+    static let shared = PetStage()
+
+    /// The page has the pet mounted and takes calls.
     private(set) var isReady = false
-    /// The page has put the pet on screen; until then the still picture stands in for it.
+    /// The page has put the current pet on screen; until then the still picture stands in for it.
     private(set) var hasDrawn = false
     /// Bumped on every tap on the pet (the home shows a short line then).
     private(set) var tapCount = 0
     private(set) var lastTapMode = "awake"
+    /// The screen that holds the pet now.
+    private(set) var owner: UUID?
+    /// Each pet's standing box, as the page measured it.
+    private(set) var anchorsByPet: [String: PetAnchors] = [:]
 
-    @ObservationIgnored fileprivate weak var webView: WKWebView?
+    @ObservationIgnored private var webView: WKWebView?
     @ObservationIgnored private var pending: [String] = []
+    @ObservationIgnored private var config: PetStageConfig?
+    @ObservationIgnored private var hosts: [UUID: WeakHost] = [:]
+    @ObservationIgnored private var appActive = true
+    @ObservationIgnored private var handler: PetPageHandler?
+    /// When the page started loading, for the debug log.
+    @ObservationIgnored private var loadStarted = ContinuousClock.now
 
-    func configure(_ config: PetStageConfig) { run("Pet.configure(\(Self.json(config)))") }
+    private init() {}
+
+    func anchors(for pet: String) -> PetAnchors? { anchorsByPet[pet] }
+
+    // MARK: - Screens
+
+    /// Starts the page in the background, so the pet is there the moment a screen asks for it.
+    func warmUp(_ config: PetStageConfig) {
+        guard webView == nil else { return }
+        self.config = config
+        let handler = PetPageHandler(stage: self)
+        self.handler = handler
+        let content = WKUserContentController()
+        content.add(handler, name: "pet")
+        content.addUserScript(Self.initScript(config))
+        let configuration = WKWebViewConfiguration()
+        configuration.userContentController = content
+        configuration.suppressesIncrementalRendering = true
+
+        let web = WKWebView(frame: CGRect(x: 0, y: 0, width: 400, height: 600), configuration: configuration)
+        web.navigationDelegate = handler
+        web.isOpaque = false
+        web.backgroundColor = .clear
+        web.scrollView.backgroundColor = .clear
+        web.scrollView.isScrollEnabled = false
+        web.scrollView.bounces = false
+        web.scrollView.contentInsetAdjustmentBehavior = .never
+        web.allowsLinkPreview = false
+        web.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        #if DEBUG
+        web.isInspectable = true
+        #endif
+        webView = web
+        loadStarted = .now
+        log("warm-up \(config.pet)")
+        Self.load(web)
+    }
+
+    /// A screen came on: it gets the pet, showing `config`.
+    func claim(_ owner: UUID, config: PetStageConfig) {
+        self.owner = owner
+        if webView == nil { warmUp(config) }
+        attachToOwner()
+        apply(config)
+        updatePause()
+    }
+
+    /// A screen went away: the pet pauses unless another screen already took it.
+    func release(_ owner: UUID) {
+        guard self.owner == owner else { return }
+        self.owner = nil
+        updatePause()
+    }
+
+    /// The holding screen changed what it shows (theme, mood, box…). Other screens are ignored.
+    func update(_ owner: UUID, config: PetStageConfig) {
+        guard self.owner == owner else { return }
+        apply(config)
+    }
+
+    /// The place on screen where `owner` shows the pet.
+    fileprivate func register(_ owner: UUID, host: PetHostView) {
+        hosts = hosts.filter { $0.value.view != nil }
+        hosts[owner] = WeakHost(view: host)
+        if self.owner == owner { attachToOwner() }
+    }
+
+    func setAppActive(_ active: Bool) {
+        appActive = active
+        updatePause()
+    }
+
+    private func attachToOwner() {
+        guard let owner, let host = hosts[owner]?.view, let webView, webView.superview !== host else { return }
+        webView.removeFromSuperview()
+        webView.frame = host.bounds
+        host.addSubview(webView)
+    }
+
+    private func apply(_ new: PetStageConfig) {
+        guard new != config else { return }
+        // the page mounts the pet again for a different pet or floor: the still stands in meanwhile
+        if config.map({ $0.pet != new.pet || $0.rug != new.rug }) ?? true { hasDrawn = false }
+        config = new
+        run("Pet.configure(\(Self.json(new)))")
+    }
+
+    private func updatePause() {
+        run("Pet.pause(\(owner == nil || !appActive))")
+    }
+
+    // MARK: - The pet
+
     /// 醒来: only for the first open of the day.
     func morning() { run("Pet.morning()") }
-    /// cheer, starry, proud, hop, love: plays to the end.
+    /// cheer, starry, proud, hop, love, cheerup, confused: plays to the end.
     func celebrate(_ id: String) { run("Pet.celebrate('\(id)')") }
     func play(_ id: String) { run("Pet.play('\(id)')") }
     /// A food bubble reached the pet's mouth.
     func eat() { run("Pet.eat()") }
     func activity() { run("Pet.activity()") }
-    func pause(_ paused: Bool) { run("Pet.pause(\(paused))") }
 
     private func run(_ js: String) {
         guard isReady, let webView else {
@@ -77,48 +187,27 @@ final class PetStageController {
         webView.evaluateJavaScript(js, completionHandler: nil)
     }
 
-    fileprivate func attach(_ webView: WKWebView) {
-        self.webView = webView
-        isReady = false
-        hasDrawn = false
-        loadStarted = .now
-    }
-
-    /// The web content process went away (iOS reclaims it in the background): calls wait again
-    /// until the reloaded page is ready, and the still picture comes back meanwhile.
-    fileprivate func pageLost() {
-        isReady = false
-        hasDrawn = false
-        loadStarted = .now
-    }
-
-    /// When the page started loading, for the debug log.
-    @ObservationIgnored private var loadStarted = ContinuousClock.now
-
-    /// Debug builds print how long the page takes (`[pet] ready toast +640ms`) to the console.
-    fileprivate func log(_ text: String) {
-        #if DEBUG
-        let ms = Int((ContinuousClock.now - loadStarted) / .milliseconds(1))
-        // stderr is unbuffered, so the line is there even if the app is ended right after
-        FileHandle.standardError.write(Data("[pet] \(text) +\(ms)ms\n".utf8))
-        #endif
-    }
+    // MARK: - Page events
 
     fileprivate func receive(_ body: Any) {
         guard let message = body as? [String: Any], let type = message["type"] as? String else { return }
+        let pet = message["pet"] as? String
         switch type {
         case "ready":
-            if let raw = message["anchors"], let data = try? JSONSerialization.data(withJSONObject: raw) {
-                anchors = try? JSONDecoder().decode(PetAnchors.self, from: data)
+            if let pet, let raw = message["anchors"], let data = try? JSONSerialization.data(withJSONObject: raw),
+               let anchors = try? JSONDecoder().decode(PetAnchors.self, from: data) {
+                anchorsByPet[pet] = anchors
             }
+            log("ready \(pet ?? "?")")
+            guard !isReady else { return }
             isReady = true
-            log("ready \(message["pet"] as? String ?? "?")")
             let queued = pending
             pending = []
             queued.forEach(run)
         case "drawn":
-            hasDrawn = true
-            log("drawn \(message["pet"] as? String ?? "?")")
+            log("drawn \(pet ?? "?")")
+            // a drawing of the pet shown before the latest change doesn't count
+            if pet == nil || pet == config?.pet { hasDrawn = true }
         case "tap":
             lastTapMode = message["mode"] as? String ?? "awake"
             tapCount += 1
@@ -129,117 +218,124 @@ final class PetStageController {
         }
     }
 
+    /// The web content process went away (iOS reclaims it in the background): load the page
+    /// again showing what the app shows now; calls wait until it is ready.
+    fileprivate func pageLost() {
+        guard let webView else { return }
+        log("web content process ended, reloading")
+        isReady = false
+        hasDrawn = false
+        pending = []
+        loadStarted = .now
+        if let config {
+            let content = webView.configuration.userContentController
+            content.removeAllUserScripts()
+            content.addUserScript(Self.initScript(config))
+        }
+        Self.load(webView)
+        updatePause()
+    }
+
+    /// Debug builds print how long the page takes (`[pet] ready toast +640ms`) to the console.
+    fileprivate func log(_ text: String) {
+        #if DEBUG
+        let ms = Int((ContinuousClock.now - loadStarted) / .milliseconds(1))
+        // stderr is unbuffered, so the line is there even if the app is ended right after
+        FileHandle.standardError.write(Data("[pet] \(text) +\(ms)ms\n".utf8))
+        #endif
+    }
+
+    private static func initScript(_ config: PetStageConfig) -> WKUserScript {
+        WKUserScript(source: "window.PET_INIT = \(json(config));", injectionTime: .atDocumentStart, forMainFrameOnly: true)
+    }
+
+    private static func load(_ web: WKWebView) {
+        guard let url = Bundle.main.url(forResource: "pet", withExtension: "html") else { return }
+        web.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent())
+    }
+
     static func json<T: Encodable>(_ value: T) -> String {
         (try? String(data: JSONEncoder().encode(value), encoding: .utf8)) ?? "{}"
     }
 }
 
-/// The living 3D pet (pet.html in a transparent web view). Only the pet's own box takes touches:
-/// tap, several taps, press and hold.
-struct PetStageView: UIViewRepresentable {
-    let controller: PetStageController
-    let config: PetStageConfig
+private struct WeakHost {
+    weak var view: PetHostView?
+}
 
-    func makeCoordinator() -> Coordinator { Coordinator(controller: controller) }
+/// Hears the page (ready / drawn / tap / hold / error) and its navigation; kept apart from the
+/// stage because WebKit retains its message handlers.
+private final class PetPageHandler: NSObject, WKScriptMessageHandler, WKNavigationDelegate {
+    weak var stage: PetStage?
 
-    func makeUIView(context: Context) -> WKWebView {
-        let content = WKUserContentController()
-        content.add(context.coordinator, name: "pet")
-        content.addUserScript(WKUserScript(source: "window.PET_INIT = \(PetStageController.json(config));",
-                                           injectionTime: .atDocumentStart, forMainFrameOnly: true))
-        let configuration = WKWebViewConfiguration()
-        configuration.userContentController = content
-        configuration.suppressesIncrementalRendering = true
-
-        let web = WKWebView(frame: .zero, configuration: configuration)
-        web.navigationDelegate = context.coordinator
-        web.isOpaque = false
-        web.backgroundColor = .clear
-        web.scrollView.backgroundColor = .clear
-        web.scrollView.isScrollEnabled = false
-        web.scrollView.bounces = false
-        web.scrollView.contentInsetAdjustmentBehavior = .never
-        web.allowsLinkPreview = false
-        #if DEBUG
-        web.isInspectable = true
-        #endif
-        controller.attach(web)
-        context.coordinator.lastConfig = config
-        Self.load(web)
-        return web
+    init(stage: PetStage) {
+        self.stage = stage
     }
 
-    fileprivate static func load(_ web: WKWebView) {
-        guard let url = Bundle.main.url(forResource: "pet", withExtension: "html") else { return }
-        web.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent())
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        let body = message.body
+        MainActor.assumeIsolated { stage?.receive(body) }
     }
 
-    func updateUIView(_ web: WKWebView, context: Context) {
-        guard context.coordinator.lastConfig != config else { return }
-        context.coordinator.lastConfig = config
-        controller.configure(config)
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        MainActor.assumeIsolated { stage?.pageLost() }
     }
 
-    static func dismantleUIView(_ web: WKWebView, coordinator: Coordinator) {
-        web.configuration.userContentController.removeScriptMessageHandler(forName: "pet")
-        web.navigationDelegate = nil
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        MainActor.assumeIsolated { stage?.log("page loaded") }
     }
 
-    final class Coordinator: NSObject, WKScriptMessageHandler, WKNavigationDelegate {
-        weak var controller: PetStageController?
-        var lastConfig: PetStageConfig?
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        let text = error.localizedDescription
+        MainActor.assumeIsolated { stage?.log("page failed: \(text)") }
+    }
 
-        init(controller: PetStageController) {
-            self.controller = controller
-        }
-
-        func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-            let body = message.body
-            MainActor.assumeIsolated { controller?.receive(body) }
-        }
-
-        /// iOS can end the page's process while the app is in the background; load the pet again,
-        /// starting from what the app shows now rather than what it showed at first.
-        func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
-            MainActor.assumeIsolated {
-                controller?.log("web content process ended, reloading")
-                controller?.pageLost()
-                if let config = lastConfig {
-                    let content = webView.configuration.userContentController
-                    content.removeAllUserScripts()
-                    content.addUserScript(WKUserScript(source: "window.PET_INIT = \(PetStageController.json(config));",
-                                                       injectionTime: .atDocumentStart, forMainFrameOnly: true))
-                }
-                PetStageView.load(webView)
-            }
-        }
-
-        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-            MainActor.assumeIsolated { controller?.log("page loaded") }
-        }
-
-        func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
-            MainActor.assumeIsolated { controller?.log("page failed: \(error.localizedDescription)") }
-        }
-
-        func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
-            MainActor.assumeIsolated { controller?.log("page failed to start: \(error.localizedDescription)") }
-        }
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        let text = error.localizedDescription
+        MainActor.assumeIsolated { stage?.log("page failed to start: \(text)") }
     }
 }
 
-/// The living pet, with its still picture standing in at the same place until the page has drawn
-/// it: a web view takes a moment to start, longer on a cold launch or a slow phone.
-struct LivePet: View {
-    let controller: PetStageController
+/// The spot a screen keeps for the pet; the shared web view is moved in while that screen holds it.
+final class PetHostView: UIView {
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        subviews.forEach { $0.frame = bounds }
+    }
+}
+
+/// Puts the shared living pet into a screen. Only the pet's own box takes touches:
+/// tap, several taps, press and hold.
+struct PetStageView: UIViewRepresentable {
+    let owner: UUID
     let config: PetStageConfig
 
+    func makeUIView(context: Context) -> PetHostView {
+        let host = PetHostView()
+        host.backgroundColor = .clear
+        return host
+    }
+
+    func updateUIView(_ host: PetHostView, context: Context) {
+        PetStage.shared.register(owner, host: host)
+        PetStage.shared.update(owner, config: config)
+    }
+}
+
+/// The living pet for one screen, with its still picture standing in at the same place until the
+/// page has drawn it. The screen holds the pet while it is on screen.
+struct LivePet: View {
+    let config: PetStageConfig
+    @State private var owner = UUID()
+    @Environment(\.scenePhase) private var scenePhase
+
     var body: some View {
+        let stage = PetStage.shared
         GeometryReader { geo in
             let side = CGFloat(config.box.size) * geo.size.width
             ZStack(alignment: .topLeading) {
-                PetStageView(controller: controller, config: config)
-                if !controller.hasDrawn, let pet = Pet3D.with(id: config.pet) {
+                PetStageView(owner: owner, config: config)
+                if !(stage.hasDrawn && stage.owner == owner), let pet = Pet3D.with(id: config.pet) {
                     PetPicture(pet: pet)
                         .frame(width: side, height: side)
                         .offset(x: CGFloat(config.box.x) * geo.size.width, y: CGFloat(config.box.y) * geo.size.height)
@@ -248,7 +344,13 @@ struct LivePet: View {
                         .transition(.opacity)
                 }
             }
-            .animation(.easeOut(duration: 0.2), value: controller.hasDrawn)
+            .animation(.easeOut(duration: 0.2), value: stage.hasDrawn)
+        }
+        .onAppear { stage.claim(owner, config: config) }
+        .onDisappear { stage.release(owner) }
+        .onChange(of: scenePhase) { _, phase in
+            stage.setAppActive(phase == .active)
+            if phase == .active, stage.owner == nil { stage.claim(owner, config: config) }
         }
     }
 }

@@ -22,6 +22,9 @@ final class PetStore {
     /// Which activities each day counted for. Kept forever (the snapshot cache only holds
     /// 30 days), so pets stay unlocked and levels never go down.
     private(set) var activityLog: [Date: Set<Activity>]
+    /// Nights the user took as a leave day (the morning each night ended on). One a week counts
+    /// as an on-time night, no reason needed.
+    private(set) var leaveDays: Set<Date>
 
     private let defaults: UserDefaults
     private var pats: [String: Int]
@@ -35,6 +38,7 @@ final class PetStore {
         static let snapshots = "cachedSnapshots"
         static let disciplinedWeeks = "disciplinedWeeks"
         static let activityLog = "activityLog"
+        static let leaveDays = "leaveDays"
     }
 
     init(defaults: UserDefaults = .standard) {
@@ -52,7 +56,25 @@ final class PetStore {
         memories = Self.decode([MemoryEvent].self, defaults.data(forKey: Keys.memories)) ?? []
         cachedSnapshots = Self.decode([HealthSnapshot].self, defaults.data(forKey: Keys.snapshots)) ?? []
         disciplinedWeeks = Self.decode(Set<Date>.self, defaults.data(forKey: Keys.disciplinedWeeks)) ?? []
-        activityLog = Self.decode([Date: Set<Activity>].self, defaults.data(forKey: Keys.activityLog)) ?? [:]
+        // Read activity names one by one, so a renamed activity never wipes the whole log.
+        let names = Self.decode([Date: [String]].self, defaults.data(forKey: Keys.activityLog)) ?? [:]
+        activityLog = names.compactMapValues { list in
+            let known = Set(list.compactMap(Activity.init(rawValue:)))
+            return known.isEmpty ? nil : known
+        }
+        leaveDays = Self.decode(Set<Date>.self, defaults.data(forKey: Keys.leaveDays)) ?? []
+    }
+
+    // MARK: - Leave days
+
+    /// Marks (or unmarks) the night ending on the morning of `day` as a leave day.
+    func setLeave(_ on: Bool, nightEnding day: Date) {
+        let morning = Calendar.current.startOfDay(for: day)
+        var updated = leaveDays
+        if on { updated.insert(morning) } else { updated.remove(morning) }
+        guard updated != leaveDays else { return }
+        leaveDays = updated
+        defaults.set(try? JSONEncoder().encode(updated), forKey: Keys.leaveDays)
     }
 
     // MARK: - Friendship

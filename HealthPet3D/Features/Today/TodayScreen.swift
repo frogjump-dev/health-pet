@@ -1,7 +1,8 @@
 import SwiftUI
 import PetCore
 
-/// Today: what got logged, this week's dots, recovery. Share sits top right.
+/// Today: what got logged, this week's dots, rest. Share sits top right. All the numbers live here
+/// (the home shows none). Last night can be taken as this week's leave day.
 struct TodayScreen: View {
     @Environment(AppModel.self) private var model
 
@@ -20,7 +21,7 @@ struct TodayScreen: View {
             }
             .fixedSize(horizontal: false, vertical: true)
             weekCard
-            recoveryCard
+            restCard
         }
     }
 
@@ -28,7 +29,7 @@ struct TodayScreen: View {
 
     private var sleepCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            CardTitle(icon: "moon", title: "Sleep", done: model.sleptOnTime, doneColor: Jade.sleep)
+            CardTitle(icon: "moon", title: "Sleep", done: model.sleptOnTime || model.lastNightIsLeave, doneColor: Jade.sleep)
             HStack(alignment: .firstTextBaseline) {
                 BigNumber(day?.sleepOnset.map(Format.time) ?? "–")
                 Spacer()
@@ -38,8 +39,37 @@ struct TodayScreen: View {
                         .foregroundStyle(Jade.ink2)
                 }
             }
+            leaveButton
         }
         .card()
+    }
+
+    /// 「用请假」: one night a week counts as on time, no reason needed. Tap again to give it back.
+    @ViewBuilder
+    private var leaveButton: some View {
+        if model.lastNightIsLeave {
+            Button { model.setLeave(false, nightEnding: Date()) } label: {
+                Label("Leave day", systemImage: "checkmark")
+                    .font(.rounded(14, .bold))
+                    .foregroundStyle(Jade.onSleep)
+                    .padding(.horizontal, 14)
+                    .frame(height: 34)
+                    .background(Capsule().fill(Jade.sleep))
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint("Gives the leave day back")
+        } else if model.canTakeLeaveLastNight {
+            Button { model.setLeave(true, nightEnding: Date()) } label: {
+                Label("Use leave day", systemImage: "moon.zzz")
+                    .font(.rounded(14, .bold))
+                    .foregroundStyle(Jade.ink)
+                    .padding(.horizontal, 14)
+                    .frame(height: 34)
+                    .background(Capsule().fill(Jade.fill))
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint("Counts last night as on time. One a week.")
+        }
     }
 
     private var workoutCard: some View {
@@ -82,14 +112,21 @@ struct TodayScreen: View {
         .card()
     }
 
-    private var recoveryCard: some View {
-        let recovery = day.flatMap { DailyMetrics.recovery($0, baseline: model.baseline) }
+    /// Apple users: our own estimate, called Rest. Whoop users: Whoop's recovery, marked WHOOP.
+    private var restCard: some View {
+        let whoop = model.restIsWhoop
         return HStack {
-            Label { Text("Recovery") } icon: { Image(systemName: "heart") }
+            Label { Text(whoop ? "Recovery" : "Rest") } icon: { Image(systemName: "battery.75percent") }
                 .font(.rounded(15, .semibold))
                 .foregroundStyle(Jade.ink)
+            if whoop {
+                Text("WHOOP")
+                    .font(.system(size: 9, weight: .medium))
+                    .tracking(1.2)
+                    .foregroundStyle(Jade.ink3)
+            }
             Spacer()
-            Text(recovery.map { "\(Int($0.rounded()))%" } ?? "–")
+            Text(model.rest.map { "\(Int($0.rounded()))%" } ?? "–")
                 .font(.rounded(20, .bold))
                 .foregroundStyle(Jade.ink)
                 .monospacedDigit()

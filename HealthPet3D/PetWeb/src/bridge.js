@@ -15,7 +15,7 @@ const post = (msg) => { try { window.webkit?.messageHandlers?.pet?.postMessage(m
 const stage = document.getElementById('stage');
 window.addEventListener('error', (e) => post({ type: 'error', message: `${e.message} @${e.lineno}:${e.colno}` }));
 window.addEventListener('unhandledrejection', (e) => post({ type: 'error', message: String(e.reason) }));
-const cfg = { pet: 'toast', rug: false, shadow: true, dark: false, canvas: null, bedtime: false, mood: 'normal', interactive: true, still: null,
+const cfg = { pet: 'toast', rug: false, shadow: true, dark: false, canvas: null, bedtime: false, mood: 'normal', energy: 'normal', interactive: true, still: null,
   // where the pet's 100 × 100 box sits in the page, as fractions of the page width / height
   box: { x: 0.19, y: 0.245, size: 0.62 } };
 let pet = null, dir = null, raf = 0, last = 0, paused = false, gulp = -1;
@@ -31,9 +31,35 @@ function placeStage() {
   stage.style.width = stage.style.height = `${size * 100}vw`;
 }
 
+// ---------- the pet's slow energy (PRD v0.2 §5.5) ----------
+// Built on the director's own idle (live.js is unchanged): every so often, while the pet is awake,
+// in a normal mood and doing nothing else, it gets one more idle move from its energy's pool.
+// Lively hums, hops and sparkles more; low yawns, daydreams and stretches more, its floor is paler,
+// and a tap first cheers you on. Never sad.
+const ENERGY_IDLE = {
+  lively: ['hum', 'hum', 'hum', 'hop', 'hop', 'starry', 'proud'],
+  low: ['yawn', 'yawn', 'daydream', 'daydream', 'stretch'],
+};
+let energyIn = 8, cheeredAt = -1e9;
+function applyEnergy() {
+  stage.classList.toggle('low', cfg.energy === 'low');
+  energyIn = 8;
+}
+function energyTick(dt) {
+  const pool = ENERGY_IDLE[cfg.energy];
+  if (!pool || !dir) return;
+  energyIn -= dt;
+  if (energyIn > 0) return;
+  energyIn = 9 + Math.random() * 8;
+  const st = dir.status();
+  if (st.mode !== 'awake' || st.event || st.mood !== 'normal') return;
+  dir.request(pool[Math.floor(Math.random() * pool.length)], { prio: 0.5, kind: 'ambient' });
+}
+
 function mount() {
   applyTheme();
   placeStage();
+  applyEnergy();
   const p = PETS[cfg.pet] || PETS.toast;
   pet = mountPet(stage, p, { rug: cfg.rug, shadow: cfg.shadow });
   dir = createDirector(pet.anchors, { timing: cfg.bedtime ? BEDTIME : AWAKE, seed: 5 });
@@ -50,6 +76,12 @@ function mount() {
 
 /** A posed, motionless frame, for the pictures the app shows in grids and share cards. */
 function drawStill(kind) {
+  if (kind === 'proud') {
+    // 骄傲挺胸 at its key pose: the main pet on share cards
+    const e = EXPR_BY_ID.proud;
+    pet.frame(e.f(e.key, pet.anchors));
+    return;
+  }
   const s = base();
   if (kind === 'happy') s.eyes = both({ k: 'happy' });
   pet.frame(s);
@@ -60,6 +92,7 @@ function tick(now) {
   if (paused || !pet || cfg.still) return;
   const dt = Math.min(0.1, (now - last) / 1000);
   last = now;
+  energyTick(dt);
   pet.frame(dir.update(dt));
   if (gulp >= 0) {
     // the pet swallows a food bubble: a quick squash on its feet
@@ -90,6 +123,14 @@ stage.addEventListener('pointerup', () => {
   pressed = false;
   clearTimeout(holdTimer);
   if (held) { dir.holdEnd(); return; }
+  const st = dir.status();
+  if (cfg.energy === 'low' && st.mode === 'awake' && !st.event && performance.now() - cheeredAt > 60000) {
+    // a low week: the first tap in a while, the pet cheers you on (给你打气)
+    cheeredAt = performance.now();
+    dir.request('cheerup', { prio: 2 });
+    post({ type: 'tap', mode: 'awake' });
+    return;
+  }
   dir.tap();
   post({ type: 'tap', mode: dir.status().mode });
 });
@@ -104,10 +145,12 @@ window.Pet = {
     const remount = !pet || (o.pet && o.pet !== cfg.pet) || (o.rug !== undefined && o.rug !== cfg.rug) || (o.still !== undefined && o.still !== cfg.still);
     const bedtime = o.bedtime !== undefined && o.bedtime !== cfg.bedtime;
     const mood = o.mood && o.mood !== cfg.mood;
+    const energy = o.energy && o.energy !== cfg.energy;
     Object.assign(cfg, o);
     if (remount) { mount(); return; }
     applyTheme();
     placeStage();
+    if (energy) applyEnergy();
     if (bedtime) dir.setTiming(cfg.bedtime ? BEDTIME : AWAKE);
     if (mood) dir.setMood(cfg.mood);
   },
@@ -115,7 +158,7 @@ window.Pet = {
   pause(on) { paused = !!on; if (!paused) run(); },
   /** First open of the day: 醒来, played to the end. */
   morning() { dir?.morning(); },
-  /** A celebration (cheer, starry, proud, hop, love) that always plays to the end. */
+  /** A moment that always plays to the end (cheer, starry, proud, hop, love, cheerup, confused). */
   celebrate(id) { dir?.request(id, { prio: 3 }); },
   /** Any expression, as if picked from the list. */
   play(id) { dir?.play(id); },

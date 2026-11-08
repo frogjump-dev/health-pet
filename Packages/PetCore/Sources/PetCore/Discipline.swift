@@ -56,12 +56,27 @@ public struct WeekProgress: Sendable, Equatable {
 public struct DisciplineTracker: Sendable {
     public var rules: DisciplineRules
     public var bedtime: Bedtime
+    /// Friday and Saturday nights (the nights ending on a weekend morning), when set.
+    public var weekendBedtime: Bedtime?
+    /// Weeks start on the calendar's first weekday; the 3D app fixes it to Monday.
     public var calendar: Calendar
 
-    public init(rules: DisciplineRules = .standard, bedtime: Bedtime, calendar: Calendar = .current) {
+    public init(rules: DisciplineRules = .standard, bedtime: Bedtime, weekendBedtime: Bedtime? = nil,
+                calendar: Calendar = .current) {
         self.rules = rules
         self.bedtime = bedtime
+        self.weekendBedtime = weekendBedtime
         self.calendar = calendar
+    }
+
+    /// The bedtime that applies to the night ending on the morning of `day`.
+    public func bedtime(forNightEnding day: Date) -> Bedtime {
+        calendar.isDateInWeekend(day) ? weekendBedtime ?? bedtime : bedtime
+    }
+
+    /// The target time to be asleep by, for the night ending on the morning of `day`.
+    public func target(forNightEnding day: Date) -> Date {
+        bedtime(forNightEnding: day).target(forNightEnding: day, calendar: calendar)
     }
 
     public func countsAsWorkout(_ day: HealthSnapshot) -> Bool {
@@ -71,7 +86,7 @@ public struct DisciplineTracker: Sendable {
     /// nil when there is no sleep data for that night.
     public func isOnTimeNight(_ day: HealthSnapshot) -> Bool? {
         guard let onset = day.sleepOnset else { return nil }
-        let latest = bedtime.target(forNightEnding: day.day, calendar: calendar)
+        let latest = target(forNightEnding: day.day)
             .addingTimeInterval(TimeInterval(rules.bedtimeGraceMinutes * 60))
         return onset <= latest
     }

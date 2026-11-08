@@ -26,13 +26,16 @@ struct FoodBubble: Identifiable, Equatable {
     }
 }
 
-/// One status bar under the rug: fuller = more rested. Never red.
-struct StatusRow: Identifiable {
-    let id: String
-    let name: String
-    let icon: String
-    let label: String
-    let fill: Double
+/// The status area under the pet (home v3.2): no numbers. The sleep onset time with a check
+/// when it was on time (never a cross), and one Rest bar, fuller = more rested, never red.
+struct HomeStatus {
+    /// "22:48", nil without sleep data.
+    let onset: String?
+    let onTime: Bool
+    /// 0...1, nil = nothing to go on (the bar stays empty rather than showing a made-up value).
+    let rest: Double?
+    /// The bar is Whoop's recovery (a small WHOOP mark), not our own Rest estimate.
+    let fromWhoop: Bool
 }
 
 /// One day in the week row on home.
@@ -51,7 +54,8 @@ struct WeekDay: Identifiable {
 extension AppModel {
     // MARK: - Home: food bubbles
 
-    /// Today's food: steps, active energy, each workout (up to two), the day's load.
+    /// Today's food: steps, active energy, each workout (up to two), and the day's load only when
+    /// it is Whoop's strain (PRD v0.2: Apple Watch users no longer see our own load estimate).
     /// `eaten` gives the value a bubble had when it was eaten today.
     func foodBubbles(eaten: (String) -> Double?) -> [FoodBubble] {
         guard let today else { return [] }
@@ -71,10 +75,10 @@ extension AppModel {
                                   value: workout.minutes, label: "\(minutes)m", slot: i == 0 ? 2 : 4,
                                   spoken: "\(workout.name), \(minutes) minutes"))
         }
-        if let load = DailyMetrics.dailyLoad(today), load >= 0.1 {
-            all.append(FoodBubble(id: "load", kind: .load, icon: "gauge.with.dots.needle.50percent", value: load,
-                                  label: String(format: "%.1f", load), slot: 3,
-                                  spoken: today.strain != nil ? "Day strain \(String(format: "%.1f", load))" : "Daily load \(String(format: "%.1f", load))"))
+        if let strain = today.strain, strain >= 0.1 {
+            all.append(FoodBubble(id: "load", kind: .load, icon: "gauge.with.dots.needle.50percent", value: strain,
+                                  label: String(format: "%.1f", strain), slot: 3,
+                                  spoken: "Whoop day strain \(String(format: "%.1f", strain))"))
         }
         return all.filter { bubble in
             guard let was = eaten(bubble.id) else { return true }
@@ -83,21 +87,12 @@ extension AppModel {
         }
     }
 
-    // MARK: - Home: status bars
+    // MARK: - Home: status (v3.2)
 
-    var statusRows: [StatusRow] {
-        let day = today
-        let recovery = day.flatMap { DailyMetrics.recovery($0, baseline: baseline) }
-        let hrvFill = day.flatMap { DailyMetrics.hrvFill($0, baseline: baseline) }
-        let onsetFill = day.flatMap { DailyMetrics.onsetFill($0, tracker: discipline) }
-        return [
-            StatusRow(id: "recovery", name: "Recovery", icon: "heart",
-                      label: recovery.map { "\(Int($0.rounded()))%" } ?? "–", fill: (recovery ?? 0) / 100),
-            StatusRow(id: "hrv", name: "HRV", icon: "waveform.path.ecg",
-                      label: day?.hrvMs.map { "\(Int($0.rounded()))ms" } ?? "–", fill: hrvFill ?? 0),
-            StatusRow(id: "onset", name: "Asleep at", icon: "moon",
-                      label: day?.sleepOnset.map(Format.time) ?? "–", fill: onsetFill ?? 0),
-        ]
+    /// HRV and every number live in Today; the home only shows the onset time and one bar.
+    var homeStatus: HomeStatus {
+        HomeStatus(onset: today?.sleepOnset.map(Format.time), onTime: sleptOnTime,
+                   rest: rest.map { $0 / 100 }, fromWhoop: restIsWhoop)
     }
 
     // MARK: - Week
@@ -117,7 +112,8 @@ extension AppModel {
                            isToday: day == todayStart,
                            isFuture: day > todayStart,
                            workout: snapshot.map(tracker.countsAsWorkout) ?? false,
-                           night: snapshot.flatMap(tracker.isOnTimeNight) ?? false)
+                           // a leave day counts as an on-time night, so it gets the lime dot too
+                           night: (snapshot.flatMap(tracker.isOnTimeNight) ?? false) || leaveDays.contains(day))
         }
     }
 
@@ -138,6 +134,15 @@ extension AppModel {
         case .burnt, .soggy: "tired"
         case .golden, .fresh: "normal"
         }
+    }
+
+    /// The day's line after the morning wake-up (早上揭晓), and the expression that goes with it.
+    /// Only good news: an on-time night is proud, a level-up hops; otherwise nothing is said.
+    func morningReveal(levelUps: [Pet3D]) -> (expression: String, line: String)? {
+        let up = levelUps.first.map { pet in "\(pet.name) is Lv \(record(pet).level) now!" }
+        if sleptOnTime { return ("proud", up.map { "On time last night ✓ \($0)" } ?? "On time last night ✓") }
+        if let up { return ("hop", up) }
+        return nil
     }
 
     /// One short line from the pet, shown for a moment after a tap or a check-in.

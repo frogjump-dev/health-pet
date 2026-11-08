@@ -17,6 +17,11 @@ struct Pet3D: Identifiable, Hashable {
     var still: String { "pet3d_\(id)" }
     /// The same picture with ^^ eyes.
     var happyStill: String { "pet3d_\(id)_happy" }
+    /// Chest out, chin up (骄傲挺胸): the main pet on share cards.
+    var proudStill: String { "pet3d_\(id)_proud" }
+
+    /// Honey, Warm Milk and Protein Bar: only for Whoop users.
+    var isWhoopOnly: Bool { activity?.isWhoopOnly ?? false }
 
     /// In the order of the 3D roster: Toast, then the families.
     static let all: [Pet3D] = {
@@ -52,19 +57,23 @@ struct PetRecord {
 extension AppModel {
     func record(_ pet: Pet3D) -> PetRecord {
         guard let activity = pet.activity else {
-            // Toast's level is your friendship with it (pats and treats).
-            let progress = bond.progress
-            return PetRecord(pet: pet, isUnlocked: true, level: max(1, bond.level),
-                             levelFraction: progress.needed > 0 ? Double(progress.current) / Double(progress.needed) : 0,
-                             unlockedOn: store.adoptedOn)
+            // Toast's level = every 自律周 so far (PRD v0.2); the bar is this week on its way.
+            return PetRecord(pet: pet, isUnlocked: true, level: disciplinedWeekTotal,
+                             levelFraction: weekFraction, unlockedOn: store.adoptedOn)
         }
         let p = progress(for: activity)
         return PetRecord(pet: pet, isUnlocked: p.isUnlocked, level: p.level, levelFraction: p.levelFraction, unlockedOn: p.unlockedOn)
     }
 
-    /// Every pet, unlocked first (Toast, then highest level), locked ones after in roster order.
+    /// The Whoop pets only show up for Whoop users (or once one of them is unlocked).
+    var showsWhoopPets: Bool {
+        whoopStatus == .connected || Pet3D.all.contains { $0.isWhoopOnly && record($0).isUnlocked }
+    }
+
+    /// Every pet the user can meet, unlocked first (Toast, then highest level), locked ones
+    /// after in roster order.
     var petRecords: [PetRecord] {
-        let all = Pet3D.all.map(record)
+        let all = Pet3D.all.filter { showsWhoopPets || !$0.isWhoopOnly }.map(record)
         let unlocked = all.filter(\.isUnlocked).sorted { a, b in
             if a.pet.activity == nil { return true }
             if b.pet.activity == nil { return false }
@@ -87,6 +96,7 @@ struct PetPicture: View {
     let pet: Pet3D
     var locked = false
     var happy = false
+    var proud = false
 
     var body: some View {
         if locked {
@@ -97,7 +107,7 @@ struct PetPicture: View {
                 .foregroundStyle(Jade.fill)
                 .accessibilityLabel("Locked pet")
         } else {
-            Image(happy ? pet.happyStill : pet.still)
+            Image(proud ? pet.proudStill : happy ? pet.happyStill : pet.still)
                 .resizable()
                 .interpolation(.high)
                 .scaledToFit()
@@ -128,7 +138,7 @@ extension Activity {
         case .other: "figure.mixed.cardio"
         case .recoveryMatch: "battery.75percent"
         case .sleepNeedMet: "bed.double"
-        case .highStrain: "flame"
+        case .balancedStreak: "bolt"
         }
     }
 }

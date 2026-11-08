@@ -1,8 +1,8 @@
 import SwiftUI
 import PetCore
 
-/// Home (v3.1): pet name, the week, the living pet on its flat oval with today's food bubbles
-/// around it, three rest bars, and the dock (Pets · Today · Memories).
+/// Home (v3.2): pet name, the week (Monday first), the living pet on its flat oval with today's
+/// food bubbles around it, the status area without numbers, and the dock (Pets · Today · Memories).
 struct HomeScreen: View {
     @Environment(AppModel.self) private var model
     @Environment(HomeState.self) private var home
@@ -10,13 +10,16 @@ struct HomeScreen: View {
     @Environment(\.colorScheme) private var scheme
     @Environment(\.scenePhase) private var scenePhase
 
-    @State private var stage = PetStageController()
+    private var stage: PetStage { PetStage.shared }
     @State private var line: String?
     @State private var lineTask: Task<Void, Never>?
+    @State private var momentsTask: Task<Void, Never>?
     /// Bubbles on their way to the pet's mouth: id → 0...1 along the arc.
     @State private var flights: [String: CGFloat] = [:]
     @State private var bites = 0
     @State private var onScreen = false
+    /// The 自律周 share card, offered the moment the week counts.
+    @State private var weekCard = false
 
     var body: some View {
         let pet = model.mainPet3D
@@ -30,8 +33,8 @@ struct HomeScreen: View {
             GeometryReader { geo in
                 scene(pet: pet, size: geo.size)
             }
-            StatusBars(rows: model.statusRows)
-                .padding(.horizontal, 44)
+            HomeStatusView(status: model.homeStatus)
+                .padding(.horizontal, 66)
             dock
                 .padding(.top, 26)
                 .padding(.bottom, 6)
@@ -39,28 +42,30 @@ struct HomeScreen: View {
         .background(Jade.canvas.ignoresSafeArea())
         .toolbar(.hidden, for: .navigationBar)
         .sensoryFeedback(.impact(weight: .light), trigger: bites)
+        .sheet(isPresented: $weekCard) { WeekAchievedSheet() }
         .onAppear {
             #if DEBUG
             if UserDefaults.standard.bool(forKey: "hp3dRegrow") { home.regrowFood() }
+            if UserDefaults.standard.bool(forKey: "hp3dWeekCard") { weekCard = true }
             #endif
             onScreen = true
-            stage.pause(false)
             greet()
         }
-        .onDisappear {
-            onScreen = false
-            stage.pause(true)
-        }
+        .onDisappear { onScreen = false }
         .onChange(of: scenePhase) { _, phase in
-            stage.pause(phase != .active || !onScreen)
             if phase == .active { greet() }
         }
         .onChange(of: stage.isReady) { greet() }
         .onChange(of: model.today) { greet() }
+        .onChange(of: home.onboarded) { greet() }
         .onChange(of: stage.tapCount) {
+            guard onScreen else { return }
             say(stage.lastTapMode == "awake" ? model.petLine() : "Mm… so sleepy.")
         }
     }
+
+    /// The pet's slow condition: from the data, or the test build's override.
+    private var energy: PetEnergy { home.energyOverride ?? model.energy }
 
     // MARK: - Top: name (switch the main pet) and more
 
@@ -84,26 +89,22 @@ struct HomeScreen: View {
             }
             .accessibilityLabel("Main pet: \(pet.name)")
             Spacer()
-            Menu {
-                Button {} label: { Label("Friends · Coming soon", systemImage: "person.2") }
-                    .disabled(true)
-                Button { router.path.append(.settings) } label: { Label("Settings", systemImage: "gearshape") }
-            } label: {
-                RoundIcon(systemName: "ellipsis")
-            }
-            .accessibilityLabel("More")
+            // No feature, no entry (PRD v0.2): only Settings lives here.
+            NavigationLink(value: Route.settings) { RoundIcon(systemName: "ellipsis") }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Settings")
         }
     }
 
-    // MARK: - The stage: pet, rug, food bubbles, a short line
+    // MARK: - The stage: pet, flat oval, food bubbles, a short line
 
     @ViewBuilder
     private func scene(pet: Pet3D, size: CGSize) -> some View {
         if size.width > 1, size.height > 1 {
-            let layout = HomeLayout(size: size, anchors: stage.anchors ?? .standard)
+            let layout = HomeLayout(size: size, anchors: stage.anchors(for: pet.id) ?? .standard)
             let bubbles = model.foodBubbles { home.eatenValue($0) }
             ZStack(alignment: .topLeading) {
-                LivePet(controller: stage, config: stageConfig(pet: pet, box: layout.box))
+                LivePet(config: stageConfig(pet: pet, box: layout.box))
                     .frame(width: size.width, height: size.height)
                     .accessibilityLabel("\(pet.name). Tap, tap again, or hold.")
 
@@ -117,7 +118,7 @@ struct HomeScreen: View {
 
                 ForEach(Array(bubbles.enumerated()), id: \.element.id) { index, bubble in
                     let from = layout.slot(bubble.slot)
-                    Button { harvest(bubble, all: bubbles, from: from, to: layout.mouth, lift: size.width * 0.16) } label: {
+                    Button { harvest(bubble, from: from, to: layout.mouth, lift: size.width * 0.16) } label: {
                         FoodBubbleView(bubble: bubble, index: index)
                     }
                     .buttonStyle(.plain)
@@ -135,7 +136,7 @@ struct HomeScreen: View {
                 guard stage.isReady, let which = UserDefaults.standard.string(forKey: "hp3dFeed") else { return }
                 try? await Task.sleep(for: .seconds(9))
                 for bubble in model.foodBubbles(eaten: { home.eatenValue($0) }) where which == "all" || bubble.id.hasPrefix(which) {
-                    harvest(bubble, all: bubbles, from: layout.slot(bubble.slot), to: layout.mouth, lift: size.width * 0.16)
+                    harvest(bubble, from: layout.slot(bubble.slot), to: layout.mouth, lift: size.width * 0.16)
                     try? await Task.sleep(for: .seconds(0.9))
                 }
             }
@@ -144,11 +145,12 @@ struct HomeScreen: View {
     }
 
     private func stageConfig(pet: Pet3D, box: PetStageConfig.Box) -> PetStageConfig {
-        PetStageConfig(pet: pet.id, rug: true, dark: scheme == .dark,
-                       bedtime: model.petState.isAsleep, mood: model.stageMood, box: box)
+        PetStageConfig(pet: pet.id, rug: true, dark: scheme == .dark, bedtime: model.petState.isAsleep,
+                       mood: model.stageMood, energy: energy.rawValue, box: box)
     }
 
-    private func harvest(_ bubble: FoodBubble, all: [FoodBubble], from: CGPoint, to: CGPoint, lift: CGFloat) {
+    /// Feeding is only a moment with the pet (PRD v0.2, A3): nothing is counted.
+    private func harvest(_ bubble: FoodBubble, from: CGPoint, to: CGPoint, lift: CGFloat) {
         guard flights[bubble.id] == nil else { return }
         stage.activity()
         flights[bubble.id] = 0
@@ -173,22 +175,78 @@ struct HomeScreen: View {
         }
     }
 
-    // MARK: - Greeting: wake-up once a day, cheers for new check-ins
+    // MARK: - Moments: the morning, new pets, check-ins, a 自律周
+
+    /// One expression with the line the pet says as it starts.
+    private struct Moment {
+        let expression: String
+        let line: String?
+    }
+
+    /// How long each moment holds the stage (the expressions' lengths in engine.js).
+    private static let lengths: [String: Double] = [
+        "proud": 3.2, "hop": 2.76, "cheer": 3.4, "starry": 2.8, "love": 3.0, "cheerup": 3.8, "confused": 3.2,
+    ]
 
     private func greet() {
-        guard stage.isReady, onScreen, scenePhase == .active, !model.petState.isAsleep else { return }
-        var delay = 0.0
-        if home.takeMorning() {
+        guard home.onboarded, stage.isReady, onScreen, scenePhase == .active, !model.petState.isAsleep else { return }
+        var moments: [Moment] = []
+        var start = 0.0
+
+        // 醒来, then last night's result (早上揭晓): proud when on time, a hop for a level-up,
+        // otherwise a cheer-up after a lapse. Never sad.
+        let morning = home.takeMorning()
+        if morning {
             stage.morning()
-            delay = 5.2
-        }
-        if model.today != nil, home.takeCelebration(checkIns: model.checkInsToday) {
-            stage.celebrate("cheer")
-            let text = model.petLine(afterCheckIn: true)
-            Task {
-                try? await Task.sleep(for: .seconds(delay + 0.4))
-                say(text)
+            start = 5.2
+            if let reveal = model.morningReveal(levelUps: home.takeLevelUps(model.petLevels)) {
+                moments.append(Moment(expression: reveal.expression, line: reveal.line))
+            } else if home.daysAway >= 2 || model.cameBackAfterLapse {
+                moments.append(Moment(expression: "cheerup", line: "New day. Let's go again!"))
             }
+            if let days = model.anniversaryToday {
+                moments.append(Moment(expression: "love", line: "\(days) days together!"))
+            }
+        }
+
+        if model.dataMissing, home.takeOnceToday("confused") {
+            moments.append(Moment(expression: "confused", line: "No news from your watch yet."))
+        }
+
+        let newPets = home.takeNewPets(model.unlockedPets)
+        if let first = newPets.first {
+            moments.append(Moment(expression: "starry", line: newPets.count == 1 ? "\(first.name) joined you!" : "\(newPets.count) new pets!"))
+        }
+
+        let weekDone = model.week.map { $0.isDisciplined && home.takeWeekCelebration(weekStart: $0.weekStart) } ?? false
+        let newCheckIn = model.today != nil && home.takeCelebration(checkIns: model.checkInsToday)
+        if weekDone {
+            moments.append(Moment(expression: "cheer", line: "Disciplined week ✓"))
+            if model.disciplinedWeekTotal == 1 {
+                moments.append(Moment(expression: "love", line: "Our first disciplined week!"))
+            }
+        } else if newCheckIn && !(morning && model.sleptOnTime && !model.workedOut) {
+            // (an on-time night alone was just celebrated by the morning's proud look)
+            moments.append(Moment(expression: "cheer", line: model.petLine(afterCheckIn: true)))
+        }
+
+        if !morning, moments.isEmpty, model.almostWorkout, home.takeOnceToday("almost") {
+            moments.append(Moment(expression: "cheerup", line: "Almost 10k steps!"))
+        }
+
+        guard !moments.isEmpty else { return }
+        // queued in the page: each plays to the end, in order, after 醒来
+        moments.forEach { stage.celebrate($0.expression) }
+        momentsTask?.cancel()
+        momentsTask = Task {
+            try? await Task.sleep(for: .seconds(start + 0.4))
+            for moment in moments {
+                guard !Task.isCancelled else { return }
+                if let text = moment.line { say(text) }
+                try? await Task.sleep(for: .seconds(Self.lengths[moment.expression] ?? 3))
+            }
+            // the card slides up once the celebration is over
+            if weekDone, !Task.isCancelled, onScreen { weekCard = true }
         }
     }
 
@@ -395,27 +453,49 @@ struct WeekStrip: View {
     }
 }
 
-struct StatusBars: View {
-    let rows: [StatusRow]
+/// Home v3.2 status: the sleep onset time with a lime check when on time (a late night only shows
+/// the time, never a cross), and one Rest bar without a number (Whoop users: their recovery, marked
+/// WHOOP). Numbers and HRV live in Today.
+struct HomeStatusView: View {
+    let status: HomeStatus
 
     var body: some View {
-        VStack(spacing: 15) {
-            ForEach(rows) { row in
-                HStack(spacing: 14) {
-                    Image(systemName: row.icon)
-                        .font(.system(size: 15, weight: .medium))
-                        .foregroundStyle(Jade.ink2)
-                        .frame(width: 22)
-                    Track(fraction: row.fill, color: Jade.sleep)
-                    Text(row.label)
-                        .font(.rounded(13, .bold))
-                        .foregroundStyle(Jade.ink)
-                        .monospacedDigit()
-                        .frame(width: 52, alignment: .trailing)
+        VStack(spacing: 16) {
+            HStack(spacing: 12) {
+                icon("moon")
+                Text(status.onset ?? "–")
+                    .font(.rounded(15, .bold))
+                    .foregroundStyle(Jade.ink)
+                    .monospacedDigit()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Group {
+                    if status.onTime { CheckBadge(color: Jade.sleep, size: 20) }
                 }
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel("\(row.name) \(row.label)")
+                .frame(width: 52, alignment: .trailing)
             }
+            .frame(height: 24)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(status.onset.map { "Asleep at \($0)\(status.onTime ? ", on time" : "")" } ?? "No sleep data")
+            HStack(spacing: 12) {
+                icon("battery.75percent")
+                Track(fraction: status.rest ?? 0, color: Jade.sleep)
+                Text("WHOOP")
+                    .font(.system(size: 9, weight: .medium))
+                    .tracking(1.2)
+                    .foregroundStyle(Jade.ink3)
+                    .frame(width: 52, alignment: .trailing)
+                    .opacity(status.fromWhoop ? 1 : 0)
+            }
+            .frame(height: 24)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(status.rest.map { "\(status.fromWhoop ? "Whoop recovery" : "Rest") \(Int(($0 * 100).rounded())) percent" } ?? "Rest, no data yet")
         }
+    }
+
+    private func icon(_ name: String) -> some View {
+        Image(systemName: name)
+            .font(.system(size: 15, weight: .medium))
+            .foregroundStyle(Jade.ink2)
+            .frame(width: 22)
     }
 }
