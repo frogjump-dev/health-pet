@@ -15,9 +15,11 @@ extension AppModel {
         return disciplinedWeekStarts.count + 1
     }
 
-    /// This week on its way to a 自律周, 0...1 (workouts and nights together).
+    /// This week on its way to a 自律周, 0...1 (workouts and nights together). Toast's bar to
+    /// the next level, so once this week counts (it is already in the level) the bar starts
+    /// again at 0: the next level needs next week.
     var weekFraction: Double {
-        guard let week else { return 0 }
+        guard let week, !week.isDisciplined else { return 0 }
         let rules = week.rules
         let done = min(week.workouts, rules.workoutsPerWeek) + min(week.onTimeNights, rules.onTimeNightsPerWeek)
         return Double(done) / Double(rules.workoutsPerWeek + rules.onTimeNightsPerWeek)
