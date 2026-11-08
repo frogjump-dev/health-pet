@@ -14,53 +14,8 @@ packages:
     from: 2.0.0
 
 targets:
-  HealthPet:
-    type: application
-    platform: iOS
-    sources:
-      - path: HealthPet
-    configFiles:
-      Debug: Config/Base.xcconfig
-      Release: Config/Base.xcconfig
-    dependencies:
-      - package: PetCore
-      - package: Supabase
-        product: Supabase
-      - sdk: HealthKit.framework
-    info:
-      path: HealthPet/Resources/Info.plist
-      properties:
-        CFBundleDisplayName: HealthPet
-        CFBundleShortVersionString: "0.1.0"
-        CFBundleVersion: "1"
-        UILaunchScreen: {}
-        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
-        UIAppFonts: [LilitaOne-Regular.ttf, Baloo2-ExtraBold.ttf, Baloo2-SemiBold.ttf]
-        NSHealthShareUsageDescription: "Your pet reads your sleep, heart rate variability, resting heart rate and steps so it can feel how you feel. Data stays on your phone."
-        NSHealthUpdateUsageDescription: "HealthPet does not write to Apple Health."
-        NSPhotoLibraryAddUsageDescription: "Save your share cards to Photos."
-        SupabaseProjectRef: $(SUPABASE_PROJECT_REF)
-        SupabaseAnonKey: $(SUPABASE_ANON_KEY)
-        CFBundleURLTypes:
-          - CFBundleURLName: com.healthpet.app
-            CFBundleURLSchemes: [healthpet]
-    entitlements:
-      path: HealthPet/Resources/HealthPet.entitlements
-      properties:
-        com.apple.developer.healthkit: true
-        com.apple.developer.healthkit.access: []
-    settings:
-      base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.healthpet.app
-        MARKETING_VERSION: "0.1.0"
-        SWIFT_VERSION: "5.10"
-        TARGETED_DEVICE_FAMILY: "1"
-        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
-        # Set your Apple team id here (or in Xcode) to run on a device.
-        DEVELOPMENT_TEAM: ""
-
-  # HealthPet 3D: the test build of the 3D方案 (slice pets + v3 「干净版」 UI). Installs next to
-  # HealthPet; shares the health data layer below, everything on screen is in HealthPet3D/.
+  # HealthPet 3D: the app (3D方案, slice pets + v3 「干净版」 UI). The 2D HealthPet app was
+  # retired on 2026-11-08; its last version is the tag 2d-final.
   HealthPet3D:
     type: application
     platform: iOS
@@ -70,11 +25,6 @@ targets:
           - "PetWeb/**"
           - "tools/**"
           - "README.md"
-      - path: HealthPet/App/AppModel.swift
-      - path: HealthPet/Character
-      - path: HealthPet/Health
-      - path: HealthPet/Store
-      - path: HealthPet/Backend
     configFiles:
       Debug: Config/Base.xcconfig
       Release: Config/Base.xcconfig
@@ -110,19 +60,10 @@ targets:
         SWIFT_VERSION: "5.10"
         TARGETED_DEVICE_FAMILY: "1"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        # Set your Apple team id here (or in Xcode) to run on a device.
         DEVELOPMENT_TEAM: ""
 
 schemes:
-  HealthPet:
-    build:
-      targets:
-        HealthPet: all
-    run:
-      config: Debug
-    test:
-      config: Debug
-      targets:
-        - package: PetCore/PetCoreTests
   HealthPet3D:
     build:
       targets:

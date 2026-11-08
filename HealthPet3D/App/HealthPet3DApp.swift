@@ -1,8 +1,8 @@
 import SwiftUI
 
-/// HealthPet 3D: the test build of the 3D方案 (slice pets, v3 「干净版」 UI, Mountain Jade).
-/// It installs next to the 2D HealthPet app and shares its health data layer (AppModel,
-/// HealthKit / Whoop / demo providers, PetCore); everything on screen lives in HealthPet3D/.
+/// HealthPet 3D: the app (3D方案: slice pets, v3 「干净版」 UI, Mountain Jade). The 2D HealthPet
+/// app was retired on 2026-11-08 (tag 2d-final); its health data layer (AppModel, HealthKit /
+/// Whoop / demo providers, PetStore) now lives here too, the rules in Packages/PetCore.
 @main
 struct HealthPet3DApp: App {
     @State private var model: AppModel

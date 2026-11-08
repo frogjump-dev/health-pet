@@ -1,6 +1,6 @@
 # HealthPet 3D（3D方案 · 测试版）
 
-和 2D 版 HealthPet 并排安装的第二个 App（Bundle ID `com.healthpet.app3d`，桌面名字「HealthPet 3D」）。
+现在仓库里唯一的 App（Bundle ID `com.healthpet.app3d`，桌面名字「HealthPet 3D」）。2D 版 HealthPet 已在 2026-11-08 停用，见仓库根目录 README。
 界面是最终版 v3「干净版」· Mountain Jade 配色（白天）/ 森林夜（黑夜），宠物是 3D方案 的切片宠物，带 26 个表情。
 
 ## 在 Mac 上跑起来
@@ -27,17 +27,19 @@ xcodebuild -project HealthPet.xcodeproj -scheme HealthPet3D \
 
 ```
 HealthPet3D/
-  App/          入口、导航、HomeState（今天吃掉的食物、每天第一次醒来、新宠物小圆点、外观、名字）
+  App/          入口、导航、HomeState（今天吃掉的食物、每天第一次醒来、新宠物小圆点、外观、名字）、通知
   Design/       配色（Jade）、字体（SF Pro Rounded）、卡片和按钮
-  Pet/          Pet3D（20 只宠物）、PetStage（活的 3D 宠物，WKWebView 里跑 pet.html）
-  Model/        DayFacts：食物气泡、状态条、日历小点、宠物说的话
+  Pet/          Pet3D（20 只宠物）、RosterPet（宠物名单和对应的运动）、PetStage（活的 3D 宠物，WKWebView 里跑 pet.html）
+  Model/        AppModel（汇总所有数据源、算出宠物状态）、DayFacts（食物气泡、状态条、日历小点、宠物说的话）、Progress
+  Health/       数据源：HealthKit、Whoop（走 Supabase 后端）、Demo
+  Store/        PetStore：存在手机上的领养日、回忆、自律周、运动记录、请假日、健康数据缓存
+  Backend/      Supabase 客户端（Whoop 登录和同步）
   Features/     Home · Today · Pets（含宠物详情）· Share · Memories · Settings
   Resources/    Assets（20 只宠物 × 正常/开心两张静态图、App 图标）、PetWeb/pet.html
   PetWeb/       pet.html 的源码和构建脚本（不进 App）
 ```
 
-共用 2D 版的数据层（不复制）：`HealthPet/App/AppModel.swift`、`Health/`、`Store/`、`Backend/`、`Character/`，以及 `Packages/PetCore`。
-两个 App 各自保存自己的数据（UserDefaults 按 App 分开）。
+规则和计算（自律周、宠物等级、精力、成就账本、分享称号……）在 `Packages/PetCore`，可以单独跑测试：`cd Packages/PetCore && swift test`。
 
 ## 3D 宠物（pet.html）
 

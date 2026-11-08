@@ -26,8 +26,6 @@ final class AppModel {
     private(set) var week: WeekProgress?
     /// This calendar week's days so far (Mon/Sun start per the user's calendar), oldest first.
     private(set) var weekDays: [HealthSnapshot] = []
-    /// Today's HRV is clearly above the user's own 30-day normal. A bonus line only, never scored.
-    private(set) var recoveryBonus = false
     /// The user's own 30-day normal before today (HRV measured the same way as today's).
     private(set) var baseline = PersonalBaseline()
     /// On-time nights in a row, up to last night.
@@ -46,15 +44,12 @@ final class AppModel {
     /// HealthKit never reveals whether read access was granted, so this only records that
     /// the user went through the permission sheet.
     private(set) var appleHealthConnected: Bool
-    /// Bumped on every pat or treat so the pet view can play a reaction.
-    private(set) var reactionCount = 0
     var errorMessage: String?
 
     var dataMode: DataMode {
         didSet { defaults.set(dataMode.rawValue, forKey: Keys.dataMode) }
     }
     var demoScenario: PetMood = .golden
-    var skin: any CharacterSkin = CharacterCatalog.defaultSkin
     /// Saved on this phone; changing it re-judges past nights on the next refresh.
     var sleepSchedule: SleepSchedule {
         didSet { defaults.set(try? JSONEncoder().encode(sleepSchedule), forKey: Keys.sleepSchedule) }
@@ -105,52 +100,19 @@ final class AppModel {
         evaluate(store.cachedSnapshots, now: Date(), recordMemories: false)
     }
 
-    // MARK: - Pet interactions (forwarded so views only talk to the model)
+    // MARK: - Pets and progress (forwarded so views only talk to the model)
 
-    var bond: Bond { store.bond }
     var memories: [MemoryEvent] { store.memories }
     var daysTogether: Int { store.daysTogether }
-    var canClaimTreat: Bool { store.canClaimTreat }
-
-    /// Pets the user has: Toast, plus every pet whose activity has been done at least once.
-    var ownedPets: [RosterPet] {
-        [.toast] + RosterPet.roster.filter { pet in pet.activity.map { progress(for: $0).isUnlocked } ?? false }
-    }
 
     func progress(for activity: Activity) -> ActivityProgress {
         activityProgress[activity] ?? ActivityProgress(activity: activity, sessions: 0, experience: 0, unlockedOn: nil)
     }
 
-    /// Unlocked pets, highest level first: the user's sports identity on share cards.
-    var topPets: [(pet: RosterPet, progress: ActivityProgress)] {
-        RosterPet.roster.compactMap { pet in pet.activity.map { (pet: pet, progress: progress(for: $0)) } }
-            .filter { $0.progress.isUnlocked }
-            .sorted { ($0.progress.experience, $0.progress.sessions) > ($1.progress.experience, $1.progress.sessions) }
-    }
-
-    /// The pet in the middle of the room, in the top bar and on share cards.
+    /// The pet on the home stage and in the middle of share cards.
     var mainPetID: String {
         didSet { defaults.set(mainPetID, forKey: Keys.mainPetID) }
     }
-
-    /// Only pets with kitchen art can stand in the room, so only they can be the main pet.
-    var mainPet: RosterPet {
-        ownedPets.first { $0.id == mainPetID && $0.image != nil } ?? .toast
-    }
-
-    /// The pets standing in the room, main pet first. Pets whose art isn't drawn yet stay
-    /// in the Pets page until it is.
-    var homePets: [RosterPet] {
-        [mainPet] + ownedPets.filter { $0.id != mainPet.id && $0.image != nil }
-    }
-
-    /// The user's most frequent workout this week, e.g. "Run", for titles on share cards.
-    var favouriteWorkout: String? {
-        let types = weekDays.compactMap(\.workoutType)
-        return Dictionary(grouping: types, by: { $0 }).max { $0.value.count < $1.value.count }?.key
-    }
-
-    var weekSteps: Int { weekDays.compactMap(\.steps).reduce(0, +) }
 
     /// Weeks always start on Monday (PRD v0.2), whatever the phone's region says.
     static var weekCalendar: Calendar {
@@ -175,35 +137,6 @@ final class AppModel {
     func setLeave(_ on: Bool, nightEnding day: Date) {
         store.setLeave(on, nightEnding: day)
         evaluate(recentDays, now: Date(), recordMemories: false)
-    }
-
-    /// Which week of the current 4-week achievement block this is (1...4), counted from adoption.
-    var weekInBlock: Int {
-        let tracker = discipline
-        let weeks = Calendar.current.dateComponents([.weekOfYear], from: tracker.weekStart(for: store.adoptedOn),
-                                                    to: tracker.weekStart(for: Date())).weekOfYear ?? 0
-        return weeks % tracker.rules.weeksPerBlock + 1
-    }
-
-    var disciplinedWeekCount: Int { store.disciplinedWeeks.count }
-
-    /// The main pet's bubble: cheers for what got logged, otherwise how it feels. Never a score.
-    var homeLine: String {
-        if petState.isAsleep { return skin.greeting(for: petState) }
-        if onTimeStreak >= 2 { return "Slept on time \(onTimeStreak) nights!" }
-        if let today, discipline.countsAsWorkout(today) {
-            return today.workoutType.map { "\($0) logged. Proud of you!" } ?? "10k steps today. Nice walking!"
-        }
-        return skin.greeting(for: petState)
-    }
-
-    func pat() {
-        reactionCount += 1
-        store.recordPat()
-    }
-
-    func claimTreat() {
-        if store.claimTreat() { reactionCount += 1 }
     }
 
     // MARK: - Sources
@@ -320,11 +253,6 @@ final class AppModel {
         weekDays = snapshots.filter { $0.day >= weekStart && $0.day <= todayStart }.sorted { $0.day < $1.day }
         let baseline = PersonalBaseline.from(history: history, before: todayStart, hrvMethod: todaySnapshot.hrvMethod)
         self.baseline = baseline
-        if let hrv = todaySnapshot.hrvMs, let normal = baseline.hrvMs, baseline.isReliable {
-            recoveryBonus = hrv >= normal * 1.05
-        } else {
-            recoveryBonus = false
-        }
         onTimeStreak = tracker.onTimeStreak(snapshots)
         energy = EnergyMeter.energy(snapshots: snapshots, today: now, tracker: tracker, baseline: baseline, leaveDays: leave)
         let finishedWeeks = tracker.disciplinedWeeks(in: snapshots, before: now, leaveDays: leave)
@@ -363,16 +291,6 @@ struct SleepSchedule: Codable, Equatable {
     /// nil = the same as on weekdays.
     var weekendBedtimeMinutes: Int?
     var weekendWakeMinutes: Int?
-
-    /// Whole hours, for the 2D app's steppers.
-    var bedtimeHour: Int {
-        get { bedtimeMinutes / 60 }
-        set { bedtimeMinutes = newValue * 60 }
-    }
-    var wakeHour: Int {
-        get { wakeMinutes / 60 }
-        set { wakeMinutes = newValue * 60 }
-    }
 
     var bedtime: Bedtime { Bedtime(hour: bedtimeMinutes / 60, minute: bedtimeMinutes % 60) }
     var weekendBedtime: Bedtime? { weekendBedtimeMinutes.map { Bedtime(hour: $0 / 60, minute: $0 % 60) } }
