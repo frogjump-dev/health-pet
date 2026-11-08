@@ -79,8 +79,8 @@ pet_ready home
 sleep 2;   shot 02-home-waking
 sleep 3;   shot 03-home-cheer
 sleep 4.5; shot 04-home-feeding
-sleep 1.6; shot 05-home-feeding-2
-sleep 2.4; shot 06-home-all-eaten   # before the 自律周 card slides up (about 15 seconds after ready)
+sleep 1.6; shot 05-home-all-eaten
+sleep 4;   shot 06-home-week-card   # this week counts, so its card slides up once the celebration ends
 
 # 2. Home, dark, food grown back: right away (the still stands in) and once the pet is live
 xcrun simctl ui "$UDID" appearance dark
