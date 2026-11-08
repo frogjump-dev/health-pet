@@ -174,6 +174,10 @@ struct PageScroll<Content: View>: View {
                 .padding(.bottom, 32)
         }
         .scrollIndicators(.hidden)
+        #if DEBUG
+        // For screenshots on the simulator: -hp3dScrollEnd YES opens every page scrolled to the end.
+        .defaultScrollAnchor(UserDefaults.standard.bool(forKey: "hp3dScrollEnd") ? .bottom : nil)
+        #endif
         .background(Jade.canvas.ignoresSafeArea())
         .toolbar(.hidden, for: .navigationBar)
     }

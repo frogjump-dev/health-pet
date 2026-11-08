@@ -11,7 +11,17 @@ struct ShareScreen: View {
     @Environment(\.colorScheme) private var scheme
     @AppStorage("3d.share.numbers") private var showNumbers = true
     @AppStorage("3d.share.bedtimes") private var showBedtimes = false
-    @State private var page = ShareCard.Kind.week
+    @State private var page: ShareCard.Kind = {
+        #if DEBUG
+        // For screenshots on the simulator: -hp3dShareCard today|pets
+        switch UserDefaults.standard.string(forKey: "hp3dShareCard") {
+        case "today": return .today
+        case "pets": return .pets
+        default: break
+        }
+        #endif
+        return .week
+    }()
     @State private var image: Image?
 
     var body: some View {

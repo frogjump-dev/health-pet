@@ -9,7 +9,17 @@ struct FirstOpenScreen: View {
     @Environment(HomeState.self) private var home
 
     private enum Step { case hello, lastDays, bedtime }
-    @State private var step = Step.hello
+    @State private var step: Step = {
+        #if DEBUG
+        // For screenshots on the simulator: -hp3dFirstOpenStep lastDays|bedtime
+        switch UserDefaults.standard.string(forKey: "hp3dFirstOpenStep") {
+        case "lastDays": return .lastDays
+        case "bedtime": return .bedtime
+        default: break
+        }
+        #endif
+        return .hello
+    }()
     @State private var connecting = false
 
     var body: some View {
