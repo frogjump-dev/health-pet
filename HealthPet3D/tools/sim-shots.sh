@@ -1,12 +1,14 @@
 #!/bin/bash
 # Screenshots of HealthPet 3D on the iPhone 18 Pro simulator, without opening Simulator.app.
-# Usage: HealthPet3D/tools/sim-shots.sh <simulator udid> <output folder>
+# Usage: HealthPet3D/tools/sim-shots.sh <simulator udid> <output folder> [all|extra]
+#   extra = only part 4 (first-open steps, the other share cards, page ends, Toast's page)
 # Needs a Debug build in build/dd (see HealthPet3D/README.md). Shuts the simulator down at the end.
 # Each launch writes its own console-<name>.log; lines starting with [pet] say how long the
 # living pet took to load (ready / drawn) and show any page error.
 set -u
 UDID="$1"
 OUT="$2"
+ONLY="${3:-all}"
 APP_PATH="build/dd/Build/Products/Debug-iphonesimulator/HealthPet3D.app"
 BUNDLE="com.healthpet.app3d"
 mkdir -p "$OUT"
@@ -66,7 +68,8 @@ xcrun simctl status_bar "$UDID" override --time 9:41 --batteryState charged --ba
 xcrun simctl uninstall "$UDID" "$BUNDLE" >/dev/null 2>&1   # fresh install: the pet wakes up, today is celebrated
 xcrun simctl install "$UDID" "$APP_PATH"
 
-# 0. The first open (fresh install): hello → the last 30 days (tapped through by hand only)
+if [[ "$ONLY" == all ]]; then
+# 0. The first open (fresh install): hello (its other steps are in part 4)
 xcrun simctl ui "$UDID" appearance light
 launch first-open -3d.onboarded NO
 sleep 1;   shot 00-first-open
@@ -112,6 +115,28 @@ for mode in light dark; do
     fi
     shot "$name"
   done
+done
+fi
+
+# 4. Screens the parts above don't reach: the first open's other two steps, the today and pets
+# share cards, the ends of the long pages (Settings, Memories), and Toast's page again
+xcrun simctl ui "$UDID" appearance light
+launch first-open-days -3d.onboarded NO -hp3dFirstOpenStep lastDays
+sleep 3;   shot 11-first-open-last-30-days
+launch first-open-bedtime -3d.onboarded NO -hp3dFirstOpenStep bedtime
+sleep 1.5; shot 12-first-open-bedtime
+for mode in light dark; do
+  xcrun simctl ui "$UDID" appearance "$mode"
+  for card in today pets; do
+    launch "share-$card-$mode" -hp3dRoute share -hp3dShareCard "$card" -3d.appearance "$mode"
+    sleep 2; shot "page-$mode-share-$card"
+  done
+  for route in settings memories; do
+    launch "$route-end-$mode" -hp3dRoute "$route" -hp3dScrollEnd YES -3d.appearance "$mode"
+    sleep 1.5; shot "page-$mode-$route-end"
+  done
+  launch "toast-$mode" -hp3dRoute pet:toast -3d.appearance "$mode"
+  sleep 4; shot "page-$mode-pet-toast"
 done
 
 xcrun simctl terminate "$UDID" "$BUNDLE" >/dev/null 2>&1
