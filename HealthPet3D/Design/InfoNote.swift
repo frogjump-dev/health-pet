@@ -39,11 +39,12 @@ extension View {
         }
     }
 
-    /// The row a note is about gets a faint rounded backing while the note is open.
+    /// The row a note is about gets a faint rounded backing while the note is open. Card-coloured:
+    /// a grey one is the colour of the empty week cells, and they would vanish into it.
     func noteHighlight(_ on: Bool, radius: CGFloat = 14, inset: CGFloat = 8) -> some View {
         background(
             RoundedRectangle(cornerRadius: radius, style: .continuous)
-                .fill(Jade.ink.opacity(on ? 0.07 : 0))
+                .fill(Jade.card.opacity(on ? 1 : 0))
                 .padding(-inset)
         )
         .animation(.easeOut(duration: 0.15), value: on)

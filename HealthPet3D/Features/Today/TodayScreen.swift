@@ -42,6 +42,14 @@ struct TodayScreen: View {
             restCard
                 .explains(.rest, $note) { restNote }
         }
+        #if DEBUG
+        // For screenshots: -hp3dBookAll YES eats today's food, to show the tags once booked.
+        .task {
+            guard UserDefaults.standard.bool(forKey: "hp3dBookAll") else { return }
+            try? await Task.sleep(for: .seconds(1.5))
+            for bubble in model.foodBubbles { _ = model.book(bubble.credit) }
+        }
+        #endif
     }
 
     private var day: HealthSnapshot? { model.today }
@@ -263,13 +271,25 @@ struct CardTitle<Trailing: View>: View {
     @ViewBuilder var trailing: () -> Trailing
 
     var body: some View {
-        HStack(spacing: 6) {
-            Image(systemName: icon).font(.system(size: 13, weight: .semibold)).foregroundStyle(Jade.ink2)
-            Text(title).font(.rounded(15, .semibold)).foregroundStyle(Jade.ink).lineLimit(1)
-            Spacer(minLength: 4)
-            trailing()
+        // A half-width card has about 142 pt for the icon, the name and "✓ Workout": tighten up,
+        // then let the icon go (the name may shrink a little), so it never reads "Ste…".
+        ViewThatFits(in: .horizontal) {
+            row(spacing: 6, showIcon: true)
+            row(spacing: 3, showIcon: true)
+            row(spacing: 3, showIcon: false)
         }
         .frame(minHeight: 22)
+    }
+
+    private func row(spacing: CGFloat, showIcon: Bool) -> some View {
+        HStack(spacing: spacing) {
+            if showIcon {
+                Image(systemName: icon).font(.system(size: 13, weight: .semibold)).foregroundStyle(Jade.ink2)
+            }
+            Text(title).font(.rounded(15, .semibold)).foregroundStyle(Jade.ink).lineLimit(1).minimumScaleFactor(0.8)
+            Spacer(minLength: spacing == 6 ? 4 : 2)
+            trailing()
+        }
     }
 }
 

@@ -286,7 +286,7 @@ private struct MetCard: View {
                 .frame(height: 20)
                 .background(Capsule().fill(sleepy ? Jade.sleep : Jade.accent))
             if let activity {
-                Text(activity == .onTimeSleep ? "Early nights · \(sessions) of them" : "\(activity.title) · \(activity.sessions(sessions))")
+                Text(earned(activity))
                     .font(.rounded(12, .medium))
                     .foregroundStyle(Jade.ink2)
                     .lineLimit(1)
@@ -298,6 +298,15 @@ private struct MetCard: View {
         .frame(maxWidth: .infinity)
         .background(RoundedRectangle(cornerRadius: Metrics.tile, style: .continuous).fill(Jade.card))
         .accessibilityElement(children: .combine)
+    }
+
+    /// One line in a half-width card ("Mindfulness · 14 mindful sessions" would be cut off).
+    private func earned(_ activity: Activity) -> String {
+        switch activity {
+        case .onTimeSleep: "Early nights · \(sessions) of them"
+        case .mindfulness: "Mindfulness · \(sessions) \(sessions == 1 ? "session" : "sessions")"
+        default: "\(activity.title) · \(activity.sessions(sessions))"
+        }
     }
 }
 
