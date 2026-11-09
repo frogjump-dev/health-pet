@@ -116,10 +116,13 @@ public struct WorkoutSession: Codable, Sendable, Equatable {
     /// Short name ("Run", "Yoga"), see `Activity.init(workoutName:)`.
     public var name: String
     public var minutes: Double
+    /// Distance covered, for runs, walks, rides and swims (nil when the workout has none).
+    public var distanceKm: Double?
 
-    public init(name: String, minutes: Double) {
+    public init(name: String, minutes: Double, distanceKm: Double? = nil) {
         self.name = name
         self.minutes = minutes
+        self.distanceKm = distanceKm
     }
 }
 

@@ -1,7 +1,8 @@
 #!/bin/bash
 # Screenshots of HealthPet 3D on the iPhone 18 Pro simulator, without opening Simulator.app.
 # Usage: HealthPet3D/tools/sim-shots.sh <simulator udid> <output folder> [all|extra]
-#   extra = only part 4 (first-open steps, the other share cards, page ends, Toast's page)
+#   extra = only parts 4 and 5 (first-open steps, share cards, page ends, Toast's page, the tour,
+#           the tap-to-explain notes)
 # Needs a Debug build in build/dd (see HealthPet3D/README.md). Shuts the simulator down at the end.
 # Each launch writes its own console-<name>.log; lines starting with [pet] say how long the
 # living pet took to load (ready / drawn) and show any page error.
@@ -40,24 +41,31 @@ first_frame() {
   rm -f "$OUT/.probe.png"
 }
 
-# pet_ready <log name>: wait for the living pet, up to a minute (the first WebKit start is the slowest)
+# pet_ready <log name>: wait for the living pet, up to 2 minutes (the first WebKit start after an
+# install is the slowest: 76 s on a MacBook Air)
 pet_ready() {
   local tries
-  for tries in {1..120}; do
+  for tries in {1..240}; do
     grep -q "\[pet\] ready" "$OUT/console-$1.log" 2>/dev/null && return
     sleep 0.5
   done
-  echo "pet not ready after a minute: $1"
+  echo "pet not ready after 2 minutes: $1"
 }
 
-# launch <log name> [app arguments...]   (the first open is skipped unless -3d.onboarded NO is passed)
+# The clock, to the hundredth of a second (bash 3 has no EPOCHREALTIME).
+now() { perl -MTime::HiRes=time -e 'printf "%.2f", time'; }
+
+# launch <log name> [app arguments...]   (the first open and the home tour are skipped unless
+# -3d.onboarded NO / -3d.tourDone NO is passed: a later argument wins over an earlier one)
 # Returns once the first frame is on screen, so the sleeps below count from there.
 launch() {
   local name="$1"; shift
   xcrun simctl terminate "$UDID" "$BUNDLE" >/dev/null 2>&1
-  : > "$OUT/console-$name.log"   # simctl appends, and pet_ready must not read an earlier run's lines
-  xcrun simctl launch --terminate-running-process --stdout="$OUT/console-$name.log" --stderr="$OUT/console-$name.log" \
-    "$UDID" "$BUNDLE" -3d.onboarded YES "$@" >/dev/null
+  # --console-pty in the background, not --stdout/--stderr: those leave the log empty (pet_ready then
+  # waits out its minute on every launch and the timed shots miss) and fail outright under ~/Desktop.
+  # It ends by itself when the app does.
+  xcrun simctl launch --console-pty --terminate-running-process "$UDID" "$BUNDLE" \
+    -3d.onboarded YES -3d.tourDone YES "$@" </dev/null >"$OUT/console-$name.log" 2>&1 &
   first_frame
 }
 
@@ -74,16 +82,37 @@ xcrun simctl ui "$UDID" appearance light
 launch first-open -3d.onboarded NO
 sleep 1;   shot 00-first-open
 
-# 1. Home, light: wake-up, the morning reveal (proud), today's moments, then every food bubble eaten
-# (-hp3dFeed starts eating 9 seconds after the pet is ready)
+# 1. Home, light: wake-up, the morning reveal, then every food bubble eaten (-hp3dFeed starts
+# 9 seconds after the pet is ready, one bubble every 2.2 s). A screenshot takes 2-3 s with the living
+# pet on screen and the harvest is over in 2.7 s, so home is recorded (harvest.mp4) and the food just
+# before the first bite and that harvest come from the video (crumbs bursting, crumbs on their way to
+# the mouth, the tag + the dot, the cell filled). The video runs about 0.4 s behind the clock.
 launch home -hp3dFeed all
 shot 01-home-start
 pet_ready home
-sleep 2;   shot 02-home-waking
-sleep 3;   shot 03-home-cheer
-sleep 4.5; shot 04-home-feeding
-sleep 1.6; shot 05-home-all-eaten
-sleep 4;   shot 06-home-week-card   # this week counts, so its card slides up once the celebration ends
+xcrun simctl io "$UDID" recordVideo --codec=h264 --force "$OUT/harvest.mp4" >"$OUT/.recording.log" 2>&1 &
+recording=$!
+for tries in {1..50}; do
+  grep -q "Recording started" "$OUT/.recording.log" && break
+  sleep 0.1
+done
+recording_at=$(now)
+sleep 1;   shot 02-home-waking
+sleep 17   # past the last bubble's harvest
+kill -INT "$recording"
+wait "$recording"
+rm -f "$OUT/.recording.log"
+feed_at=$(awk -v after="$recording_at" '/\[feed\]/ { sub(/\r$/, ""); if ($NF + 0 > after + 0) { print $NF; exit } }' "$OUT/console-home.log")
+if [[ -n "$feed_at" ]]; then
+  frame() { perl -e "printf '%s=%.2f', '$1', $feed_at - $recording_at + 0.4 + $2"; }
+  xcrun swift "$(dirname "$0")/video-frames.swift" "$OUT/harvest.mp4" "$OUT" 2>/dev/null \
+    "$(frame 03-home-food -0.6)" "$(frame 04a-feed-burst 0.3)" "$(frame 04b-feed-crumbs 0.55)" \
+    "$(frame 04c-feed-tag 1.45)" "$(frame 04d-feed-landed 1.9)"
+else
+  echo "no harvest in the recording"
+fi
+shot 05-home-all-eaten
+sleep 4;   shot 06-home-week-card   # the eaten food finished the week: cheer, then its card
 
 # 2. Home, dark, food grown back: right away (the still stands in) and once the pet is live
 xcrun simctl ui "$UDID" appearance dark
@@ -118,13 +147,13 @@ for mode in light dark; do
 done
 fi
 
-# 4. Screens the parts above don't reach: the first open's other two steps, the today and pets
+# 4. Screens the parts above don't reach: the first open's other steps, the today and pets
 # share cards, the ends of the long pages (Settings, Memories), and Toast's page again
 xcrun simctl ui "$UDID" appearance light
-launch first-open-days -3d.onboarded NO -hp3dFirstOpenStep lastDays
-sleep 3;   shot 11-first-open-last-30-days
-launch first-open-bedtime -3d.onboarded NO -hp3dFirstOpenStep bedtime
-sleep 1.5; shot 12-first-open-bedtime
+for step in health reading pets bedtime; do
+  launch "first-open-$step" -3d.onboarded NO -hp3dFirstOpenStep "$step"
+  sleep 2; shot "11-first-open-$step"
+done
 for mode in light dark; do
   xcrun simctl ui "$UDID" appearance "$mode"
   for card in today pets; do
@@ -137,9 +166,33 @@ for mode in light dark; do
   done
   launch "toast-$mode" -hp3dRoute pet:toast -3d.appearance "$mode"
   sleep 4; shot "page-$mode-pet-toast"
+  launch "today-booked-$mode" -hp3dRoute today -hp3dBookAll YES -3d.appearance "$mode"
+  sleep 4; shot "page-$mode-today-booked"
 done
 
+# 5. Home v3.4 guidance, light: the tour as it starts by itself after the first open, each of its
+# steps, and the notes a tap opens (Asleep, Rest, This week, one day of the calendar row)
+xcrun simctl ui "$UDID" appearance light
+launch tour-auto -3d.tourDone NO -3d.appearance light
+pet_ready tour-auto
+sleep 8;   shot 12-tour-auto
+for step in 1 2 3 tryit; do
+  launch "tour-$step" -hp3dTour "$step" -3d.appearance light
+  pet_ready "tour-$step"
+  sleep 7; shot "13-tour-$step"
+done
+for which in asleep rest week day; do
+  launch "note-$which" -hp3dNote "$which" -3d.appearance light
+  pet_ready "note-$which"
+  sleep 7; shot "14-note-$which"
+done
+xcrun simctl ui "$UDID" appearance dark
+launch tour-dark -hp3dTour 1 -3d.appearance dark
+pet_ready tour-dark
+sleep 7;   shot 15-tour-1-dark
+
 xcrun simctl terminate "$UDID" "$BUNDLE" >/dev/null 2>&1
+wait   # the last launch's console
 xcrun simctl status_bar "$UDID" clear
 xcrun simctl shutdown "$UDID"
 for f in "$OUT"/console-*.log; do echo "== $(basename "$f")"; grep "\[pet\]" "$f"; done

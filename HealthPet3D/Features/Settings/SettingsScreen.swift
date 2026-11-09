@@ -115,7 +115,7 @@ struct SettingsScreen: View {
                 RowDivider()
                 SettingsButton("Show the first open again") { home.onboarded = false }
                 RowDivider()
-                SettingsButton("Grow the food back") { home.regrowFood() }
+                SettingsButton("Grow the food back") { model.regrowFood() }
                 RowDivider()
                 SettingsButton("Refresh now") { Task { await model.refresh() } }
             }

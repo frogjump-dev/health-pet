@@ -177,6 +177,12 @@ final class PetStage {
     func play(_ id: String) { run("Pet.play('\(id)')") }
     /// A food bubble reached the pet's mouth.
     func eat() { run("Pet.eat()") }
+    /// A food bubble at `point` (fractions of the pet's page) was tapped: the pet watches its
+    /// crumbs come, chews, and swallows at 1.06 s, then plays `then` (giggle, proud, cheer).
+    func feed(at point: CGPoint, then expression: String) {
+        let x = String(format: "%.4f", point.x), y = String(format: "%.4f", point.y)
+        run("Pet.feed({x: \(x), y: \(y), then: '\(expression)'})")
+    }
     func activity() { run("Pet.activity()") }
 
     private func run(_ js: String) {
