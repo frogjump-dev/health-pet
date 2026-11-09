@@ -24,8 +24,13 @@ final class AppModel {
     private(set) var today: HealthSnapshot?
     /// This calendar week's 自律周 progress.
     private(set) var week: WeekProgress?
-    /// This calendar week's days so far (Mon/Sun start per the user's calendar), oldest first.
+    /// This calendar week's days so far (Monday first), oldest first, as they count so far:
+    /// what still waits as a food bubble is left out (点击 = 入账).
     private(set) var weekDays: [HealthSnapshot] = []
+    /// Today as it counts so far (booked), next to `today` as the data has it.
+    private(set) var bookedToday: HealthSnapshot?
+    /// Credits waiting on home as food bubbles, oldest day first.
+    private(set) var pending: [Credit] = []
     /// The user's own 30-day normal before today (HRV measured the same way as today's).
     private(set) var baseline = PersonalBaseline()
     /// On-time nights in a row, up to last night.
@@ -56,6 +61,11 @@ final class AppModel {
     }
 
     let store: PetStore
+    /// Which food bubbles were eaten (PRD v0.2 §4.4). Live data's book is saved; demo data
+    /// starts a fresh one every launch.
+    private let liveBook: CreditBook
+    private let demoBook: CreditBook
+    var creditBook: CreditBook { dataMode == .live ? liveBook : demoBook }
 
     private let engine = PetStateEngine()
     private let memoryDetector = MemoryDetector()
@@ -77,6 +87,8 @@ final class AppModel {
         self.defaults = defaults
         self.backend = backend
         store = PetStore(defaults: defaults)
+        liveBook = CreditBook(defaults: defaults)
+        demoBook = CreditBook(defaults: nil, history: 6)
         whoop = WhoopProvider(backend: backend)
 
         #if targetEnvironment(simulator)
@@ -126,6 +138,8 @@ final class AppModel {
                           calendar: Self.weekCalendar)
     }
 
+    var creditRules: CreditRules { CreditRules(discipline: discipline) }
+
     var activityTracker: ActivityTracker {
         ActivityTracker(discipline: discipline, wakeTarget: sleepSchedule.wake, weekendWakeTarget: sleepSchedule.weekendWake)
     }
@@ -136,7 +150,12 @@ final class AppModel {
     /// Takes (or gives back) the night ending on the morning of `day` as this week's leave day.
     func setLeave(_ on: Bool, nightEnding day: Date) {
         store.setLeave(on, nightEnding: day)
-        evaluate(recentDays, now: Date(), recordMemories: false)
+        reevaluate()
+    }
+
+    /// Works everything out again from the days already fetched (a booking, a leave day).
+    func reevaluate(now: Date = Date()) {
+        evaluate(recentDays, now: now, recordMemories: false)
     }
 
     // MARK: - Sources
@@ -248,17 +267,33 @@ final class AppModel {
 
         let tracker = discipline
         let leave = store.leaveDays
-        week = tracker.week(containing: now, snapshots: snapshots, leaveDays: leave)
+
+        // 点击 = 入账 (PRD v0.2 §4.4): what wasn't tapped by 04:00 the next day is collected for the
+        // user; what still waits as a food bubble doesn't count yet. Everything that counts (the
+        // week, the calendar, levels, the ledger) is worked out from the booked days.
+        let credits = CreditRules(discipline: tracker)
+        let book = creditBook
+        let due = credits.due(in: snapshots, booked: book.bookedIDs, now: now, since: book.since)
+        if !due.isEmpty {
+            book.add(due.map { creditRecord($0, in: snapshots, auto: true, at: credits.autoBookTime(for: $0.day)) })
+        }
+        pending = credits.pending(in: snapshots, booked: book.bookedIDs, now: now)
+        let booked = credits.booked(snapshots, pending: pending)
+        bookedToday = booked.first { $0.day == todayStart }
+
+        week = tracker.week(containing: now, snapshots: booked, leaveDays: leave)
         let weekStart = tracker.weekStart(for: now)
-        weekDays = snapshots.filter { $0.day >= weekStart && $0.day <= todayStart }.sorted { $0.day < $1.day }
+        weekDays = booked.filter { $0.day >= weekStart && $0.day <= todayStart }.sorted { $0.day < $1.day }
         let baseline = PersonalBaseline.from(history: history, before: todayStart, hrvMethod: todaySnapshot.hrvMethod)
         self.baseline = baseline
-        onTimeStreak = tracker.onTimeStreak(snapshots)
+        onTimeStreak = tracker.onTimeStreak(booked)
+        // the pet's slow condition is about how the days went, booked or not
         energy = EnergyMeter.energy(snapshots: snapshots, today: now, tracker: tracker, baseline: baseline, leaveDays: leave)
-        let finishedWeeks = tracker.disciplinedWeeks(in: snapshots, before: now, leaveDays: leave)
+        let finishedWeeks = tracker.disciplinedWeeks(in: booked, before: now, leaveDays: leave)
         let activities = activityTracker
-        let log = activities.log(snapshots, today: todayStart)
-        if recordMemories && dataMode == .live {
+        let log = activities.log(booked, today: todayStart)
+        // only ever adds, so a booking is saved the moment it happens
+        if dataMode == .live {
             store.recordDisciplinedWeeks(finishedWeeks)
             store.recordActivities(log)
         }

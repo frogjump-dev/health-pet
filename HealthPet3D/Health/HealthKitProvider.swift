@@ -150,9 +150,22 @@ struct HealthKitProvider: HealthDataProvider {
         for workout in workouts {
             let day = calendar.startOfDay(for: workout.startDate)
             result[day, default: []].append(WorkoutSession(name: Self.shortName(workout.workoutActivityType),
-                                                           minutes: workout.duration / 60))
+                                                           minutes: workout.duration / 60,
+                                                           distanceKm: Self.distanceKm(workout)))
         }
         return result
+    }
+
+    /// Distance covered, for workouts that have one (Today shows "5.1 km · 6:16").
+    private static func distanceKm(_ workout: HKWorkout) -> Double? {
+        let types: [HKQuantityTypeIdentifier] = [.distanceWalkingRunning, .distanceCycling, .distanceSwimming,
+                                                 .distanceDownhillSnowSports, .distanceWheelchair]
+        for type in types {
+            if let meters = workout.statistics(for: HKQuantityType(type))?.sumQuantity()?.doubleValue(for: .meter()), meters > 0 {
+                return meters / 1_000
+            }
+        }
+        return nil
     }
 
     /// Minutes of mindfulness sessions per day (Mindfulness app, Breathe, Headspace…).

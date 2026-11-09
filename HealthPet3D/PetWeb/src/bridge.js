@@ -18,7 +18,7 @@ window.addEventListener('unhandledrejection', (e) => post({ type: 'error', messa
 const cfg = { pet: 'toast', rug: false, shadow: true, dark: false, canvas: null, bedtime: false, mood: 'normal', energy: 'normal', interactive: true, still: null,
   // where the pet's 100 × 100 box sits in the page, as fractions of the page width / height
   box: { x: 0.19, y: 0.245, size: 0.62 } };
-let pet = null, dir = null, raf = 0, last = 0, paused = false, gulp = -1;
+let pet = null, dir = null, raf = 0, last = 0, paused = false, gulp = -1, gulpAmp = 1;
 
 function applyTheme() {
   Object.assign(PAL, cfg.dark ? NIGHT : DAY);
@@ -87,17 +87,60 @@ function drawStill(kind) {
   pet.frame(s);
 }
 
+// ---------- feeding (PRD v0.2 §4.3, B 轻泡): the eyes follow the crumbs, it chews, it swallows ----------
+// The app draws the bubble and its crumbs; the page only moves the pet, on the same timings:
+// the crumbs burst at 0.2 s, stream into the mouth from 0.36 s (one every 0.05 s, 0.4 s each),
+// the last one is in at about 1.06 s.
+const feeds = [];
+const look = { w: 0, x: 0, y: 0 };
+function mouthPx() {
+  const r = stage.getBoundingClientRect(), a = pet.anchors;
+  const my = Math.min(a.bottom - 0.1 * a.h, a.ey + 0.12 * a.h);
+  return [r.left + (a.cx / 100) * r.width, r.top + (my / 100) * r.height];
+}
+function feedTick(dt, st) {
+  let target = null;
+  for (const f of feeds) {
+    f.t += dt;
+    const t = f.t;
+    if (t < 0.36) target = [f.x, f.y];
+    else if (t < 0.76) { const p = (t - 0.36) / 0.4, e = p * p * p * 0.7 + p * 0.3; target = [f.x + (f.mx - f.x) * e, f.y + (f.my - f.y) * e]; }
+    else if (t < 1.06) target = [f.mx, f.my];
+    // chewing: a small gulp as every second crumb goes in, then the swallow
+    while (f.bites.length && t >= f.bites[0]) { f.bites.shift(); gulp = 0; gulpAmp = 0.45; }
+    if (!f.done && t >= 1.06) {
+      f.done = true;
+      gulp = 0; gulpAmp = 1;
+      dir.activity();
+      if (f.then === 'giggle') dir.play('giggle', { endAt: 1.6 });
+      else if (f.then) dir.request(f.then, { prio: 3 });
+    }
+  }
+  for (let i = feeds.length - 1; i >= 0; i--) if (feeds[i].t > 1.4) feeds.splice(i, 1);
+  look.w += ((target ? 1 : 0) - look.w) * Math.min(1, dt * (target ? 10 : 3));
+  if (target) { look.x = target[0]; look.y = target[1]; }
+  if (look.w < 0.01) return st;
+  const r = stage.getBoundingClientRect(), a = pet.anchors;
+  const ex = r.left + (a.cx / 100) * r.width, ey = r.top + (a.ey / 100) * r.height;
+  const reach = 110 * (window.innerWidth / 402);
+  return { ...st,
+    gx: st.gx + (clamp((look.x - ex) / reach, -1, 1) - st.gx) * look.w,
+    gy: st.gy + (clamp((look.y - ey) / reach, -1, 1) - st.gy) * look.w };
+}
+
 function tick(now) {
   raf = 0;
   if (paused || !pet || cfg.still) return;
   const dt = Math.min(0.1, (now - last) / 1000);
   last = now;
   energyTick(dt);
-  pet.frame(dir.update(dt));
+  let st = dir.update(dt);
+  if (feeds.length || look.w > 0.01) st = feedTick(dt, st);
+  pet.frame(st);
   if (gulp >= 0) {
-    // the pet swallows a food bubble: a quick squash on its feet
+    // the pet swallows food: a quick squash on its feet (a smaller one for each chew)
     gulp += dt;
-    const g = gulp / 0.32, k = g < 1 ? Math.sin(g * Math.PI) : 0;
+    const g = gulp / 0.32, k = g < 1 ? Math.sin(g * Math.PI) * gulpAmp : 0;
     stage.style.transform = k ? `scale(${(1 + 0.07 * k).toFixed(3)}, ${(1 - 0.06 * k).toFixed(3)})` : '';
     if (g >= 1) gulp = -1;
   }
@@ -163,7 +206,18 @@ window.Pet = {
   /** Any expression, as if picked from the list. */
   play(id) { dir?.play(id); },
   /** A food bubble reached the pet's mouth. */
-  eat() { if (!dir) return; gulp = 0; dir.activity(); dir.play('giggle', { endAt: 1.6 }); },
+  eat() { if (!dir) return; gulp = 0; gulpAmp = 1; dir.activity(); dir.play('giggle', { endAt: 1.6 }); },
+  /**
+   * A food bubble at (x, y) (fractions of the page) was tapped: the pet watches its crumbs come,
+   * chews, and at 1.06 s swallows and plays `then` (giggle, or a moment such as proud or cheer).
+   */
+  feed(o = {}) {
+    if (!dir || !pet) return;
+    dir.activity();
+    const [mx, my] = mouthPx();
+    feeds.push({ t: 0, x: (o.x ?? 0.5) * window.innerWidth, y: (o.y ?? 0.3) * window.innerHeight, mx, my,
+      then: o.then ?? 'giggle', bites: [0.81, 0.91, 1.01], done: false });
+  },
   /** Something happened around the pet (a scroll, a button): keeps it from dozing off. */
   activity() { dir?.activity(); },
   status() { return dir ? dir.status() : null; },

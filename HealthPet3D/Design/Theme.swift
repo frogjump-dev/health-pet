@@ -15,6 +15,14 @@ enum Jade {
     static let accent = dynamic(0x4B6844, 0x8FAE85)
     /// Sleep, and the rest bar on home.
     static let sleep = dynamic(0xBDB65A, 0xD9D387)
+    /// Lime as text and small icons on a card (the moon bubble's time): the day lime is deepened
+    /// so it stays readable on the card.
+    static let sleepText = dynamic(0x8A8331, 0xD9D387)
+    /// Whoop strain on its bubble: grey, it books into no cell.
+    static let load = dynamic(0x7D857A, 0xA3A99C)
+    /// The tour's dimming (58% forest by day, 66% black at night).
+    static let scrim = Color(UIColor { $0.userInterfaceStyle == .dark
+        ? UIColor.black.withAlphaComponent(0.66) : UIColor(hex: 0x2D392A).withAlphaComponent(0.58) })
     /// Text and icons on `sleep` (the share card's stamp).
     static let onSleep = dynamic(0x2D392A, 0x1A2018)
     static let primary = dynamic(0x2D392A, 0xD9D387)

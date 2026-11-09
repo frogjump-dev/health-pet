@@ -39,7 +39,8 @@ struct DemoHealthProvider: HealthDataProvider {
                 sleepOnset: Self.onset(nightEnding: day, minutesAfter11pm: onsetMinute),
                 workoutMinutes: workedOut ? workoutMinutes : nil,
                 workoutType: workedOut ? workoutType : nil,
-                workouts: workedOut ? [WorkoutSession(name: workoutType, minutes: workoutMinutes)] : [],
+                workouts: workedOut ? [WorkoutSession(name: workoutType, minutes: workoutMinutes,
+                                                      distanceKm: workoutType == "Run" ? workoutMinutes / 6.2 : nil)] : [],
                 wakeTime: Self.wake(day: day, minutesAfter7am: wakeMinute),
                 mindfulMinutes: meditated ? 10 : nil,
                 // about 30 kcal per 1,000 steps, plus ~8 kcal a workout minute
@@ -53,10 +54,12 @@ struct DemoHealthProvider: HealthDataProvider {
 
     private func todaySnapshot(day: Date) -> HealthSnapshot {
         switch scenario {
-        case .golden: HealthSnapshot(day: day, source: .mock, steps: 8_214, sleepHours: 7.5, hrvMs: 50, hrvMethod: .sdnn, restingHeartRate: 60,
-                                     sleepOnset: Self.onset(nightEnding: day, minutesAfter11pm: 5), workoutMinutes: 32, workoutType: "Run",
-                                     workouts: [WorkoutSession(name: "Run", minutes: 32)], wakeTime: Self.wake(day: day, minutesAfter7am: -15),
-                                     activeEnergyKcal: 412)
+        // the v3.3 mock's day: last night on time, a run, a swim and a 10k-step day, four bubbles
+        case .golden: HealthSnapshot(day: day, source: .mock, steps: 10_240, sleepHours: 7.5, hrvMs: 50, hrvMethod: .sdnn, restingHeartRate: 60,
+                                     sleepOnset: Self.onset(nightEnding: day, minutesAfter11pm: -12), workoutMinutes: 32, workoutType: "Run",
+                                     workouts: [WorkoutSession(name: "Run", minutes: 32, distanceKm: 5.1), WorkoutSession(name: "Swim", minutes: 25, distanceKm: 1.0)],
+                                     wakeTime: Self.wake(day: day, minutesAfter7am: -15),
+                                     activeEnergyKcal: 512)
         case .burnt:  HealthSnapshot(day: day, source: .mock, steps: 5_000, sleepHours: 4.5, hrvMs: 48, hrvMethod: .sdnn, restingHeartRate: 62,
                                      sleepOnset: Self.onset(nightEnding: day, minutesAfter11pm: 150), activeEnergyKcal: 160)
         case .soggy:  HealthSnapshot(day: day, source: .mock, steps: 3_000, sleepHours: 7.2, hrvMs: 30, hrvMethod: .sdnn, restingHeartRate: 68,

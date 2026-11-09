@@ -15,9 +15,9 @@ enum Appearance: String, CaseIterable, Identifiable {
     }
 }
 
-/// What this app remembers about the home screen, on this phone: which food bubbles were
-/// eaten today, whether the pet already woke up today, what was already celebrated, which
-/// new pets were seen, and a few settings.
+/// What this app remembers about the home screen, on this phone: whether the pet already woke
+/// up today, what was already celebrated, which new pets were seen, whether the tour was shown,
+/// and a few settings. (Which food bubbles were eaten is the credit book's, see `CreditBook`.)
 @MainActor
 @Observable
 final class HomeState {
@@ -43,12 +43,11 @@ final class HomeState {
     var energyOverride: PetEnergy? {
         didSet { defaults.set(energyOverride?.rawValue, forKey: Keys.energyOverride) }
     }
-    /// Food bubbles eaten today: bubble id → the value it had when eaten.
-    private(set) var eaten: [String: Double]
-    private var eatenDay: Date?
+    /// The 3-step tour of home (PRD v0.2 §6, v3.4) was shown; 「Show me around」 shows it again.
+    var tourDone: Bool {
+        didSet { defaults.set(tourDone, forKey: Keys.tourDone) }
+    }
     private var wokeUpOn: Date?
-    private var celebratedDay: Date?
-    private var celebrated: Int
     private(set) var seenPets: Set<String>
     /// Pets whose arrival was already celebrated with 星星眼.
     private var welcomedPets: Set<String>
@@ -65,11 +64,8 @@ final class HomeState {
     private enum Keys {
         static let appearance = "3d.appearance"
         static let userName = "3d.userName"
-        static let eaten = "3d.eaten"
-        static let eatenDay = "3d.eatenDay"
+        static let tourDone = "3d.tourDone"
         static let wokeUpOn = "3d.wokeUpOn"
-        static let celebratedDay = "3d.celebratedDay"
-        static let celebrated = "3d.celebrated"
         static let seenPets = "3d.seenPets"
         static let onboarded = "3d.onboarded"
         static let notifyBedtime = "3d.notifyBedtime"
@@ -85,11 +81,8 @@ final class HomeState {
         self.defaults = defaults
         appearance = defaults.string(forKey: Keys.appearance).flatMap(Appearance.init) ?? .system
         userName = defaults.string(forKey: Keys.userName) ?? ""
-        eaten = defaults.dictionary(forKey: Keys.eaten) as? [String: Double] ?? [:]
-        eatenDay = defaults.object(forKey: Keys.eatenDay) as? Date
+        tourDone = defaults.bool(forKey: Keys.tourDone)
         wokeUpOn = defaults.object(forKey: Keys.wokeUpOn) as? Date
-        celebratedDay = defaults.object(forKey: Keys.celebratedDay) as? Date
-        celebrated = defaults.integer(forKey: Keys.celebrated)
         seenPets = Set(defaults.stringArray(forKey: Keys.seenPets) ?? [])
         onboarded = defaults.bool(forKey: Keys.onboarded)
         notifyBedtime = defaults.bool(forKey: Keys.notifyBedtime)
@@ -101,28 +94,6 @@ final class HomeState {
     }
 
     private var today: Date { calendar.startOfDay(for: Date()) }
-
-    // MARK: - Food bubbles
-
-    /// The value a bubble had when it was eaten today, nil if it hasn't been.
-    func eatenValue(_ id: String) -> Double? {
-        eatenDay == today ? eaten[id] : nil
-    }
-
-    func eat(_ id: String, value: Double) {
-        if eatenDay != today {
-            eaten = [:]
-            eatenDay = today
-            defaults.set(today, forKey: Keys.eatenDay)
-        }
-        eaten[id] = value
-        defaults.set(eaten, forKey: Keys.eaten)
-    }
-
-    func regrowFood() {
-        eaten = [:]
-        defaults.set(eaten, forKey: Keys.eaten)
-    }
 
     // MARK: - Once a day
 
@@ -190,19 +161,6 @@ final class HomeState {
     func replayMorning() {
         wokeUpOn = nil
         defaults.removeObject(forKey: Keys.wokeUpOn)
-    }
-
-    /// True when today has more check-ins than were celebrated so far (then they count as celebrated).
-    func takeCelebration(checkIns: Int) -> Bool {
-        if celebratedDay != today {
-            celebratedDay = today
-            celebrated = 0
-            defaults.set(today, forKey: Keys.celebratedDay)
-        }
-        guard checkIns > celebrated else { return false }
-        celebrated = checkIns
-        defaults.set(celebrated, forKey: Keys.celebrated)
-        return true
     }
 
     // MARK: - New pets
