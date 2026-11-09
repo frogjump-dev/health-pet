@@ -59,18 +59,22 @@ extension AppModel {
         let preferred: [FoodBubble.Kind: [Int]] = [
             .moon: [0, 4, 2, 1, 3], .workout: [1, 3, 4, 0, 2], .steps: [2, 0, 4, 1, 3], .load: [4, 0, 2, 1, 3],
         ]
+        // Places are handed out over today's eaten food too, so a bubble stays where it is while
+        // the one next to it is eaten (the second workout doesn't slide into the first one's place).
+        let waiting = Set(pending.map(\.id))
         var taken = Set<Int>()
         var workouts = 0
         var result: [FoodBubble] = []
-        for credit in pending {
-            guard let day = recentDays.first(where: { $0.day == credit.day }) else { continue }
+        for credit in openCredits {
             let kind = Self.bubbleKind(credit.kind)
+            let shown = waiting.contains(credit.id)
             if kind == .workout {
                 guard workouts < 2 else { continue }
-                workouts += 1
+                if shown { workouts += 1 }
             }
             guard let slot = preferred[kind]?.first(where: { !taken.contains($0) }) else { continue }
             taken.insert(slot)
+            guard shown, let day = recentDays.first(where: { $0.day == credit.day }) else { continue }
             result.append(bubble(credit, kind: kind, day: day, slot: slot))
         }
         return result

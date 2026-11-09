@@ -62,6 +62,15 @@ final class CreditsTests: XCTestCase {
         XCTAssertEqual(rules.due(in: days, booked: [], now: at(4, 5), since: day(4)).count, 0)
     }
 
+    func testOpenCreditsKeepTheEatenOnes() {
+        let days = [snapshot(3, steps: 12_000)]
+        let open = rules.open(in: days, now: at(3, 20))
+        XCTAssertEqual(open.count, 1)
+        // eaten: still open (its bubble's place stays taken), no longer pending
+        XCTAssertEqual(rules.pending(in: days, booked: [open[0].id], now: at(3, 20)).count, 0)
+        XCTAssertEqual(rules.open(in: days, now: at(4, 4)).count, 0)
+    }
+
     func testPendingDataDoesNotCountYet() {
         let run = WorkoutSession(name: "Run", minutes: 32)
         let today = snapshot(3, steps: 10_500, workouts: [run, WorkoutSession(name: "Yoga", minutes: 10)], asleep: at(2, 22, 50))

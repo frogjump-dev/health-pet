@@ -31,6 +31,8 @@ final class AppModel {
     private(set) var bookedToday: HealthSnapshot?
     /// Credits waiting on home as food bubbles, oldest day first.
     private(set) var pending: [Credit] = []
+    /// The days that can still be tapped, every credit, eaten or not (where the bubbles sit).
+    private(set) var openCredits: [Credit] = []
     /// The user's own 30-day normal before today (HRV measured the same way as today's).
     private(set) var baseline = PersonalBaseline()
     /// On-time nights in a row, up to last night.
@@ -277,7 +279,8 @@ final class AppModel {
         if !due.isEmpty {
             book.add(due.map { creditRecord($0, in: snapshots, auto: true, at: credits.autoBookTime(for: $0.day)) })
         }
-        pending = credits.pending(in: snapshots, booked: book.bookedIDs, now: now)
+        openCredits = credits.open(in: snapshots, now: now)
+        pending = openCredits.filter { !book.bookedIDs.contains($0.id) }
         let booked = credits.booked(snapshots, pending: pending)
         bookedToday = booked.first { $0.day == todayStart }
 

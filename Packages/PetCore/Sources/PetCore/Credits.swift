@@ -125,12 +125,17 @@ public struct CreditRules: Sendable {
         return calendar.date(bySettingHour: autoBookHour, minute: 0, second: 0, of: next) ?? next
     }
 
-    /// Credits still waiting for a tap: not booked, and before their 04:00.
-    public func pending(in snapshots: [HealthSnapshot], booked: Set<String>, now: Date) -> [Credit] {
+    /// Every credit of the days that can still be tapped (before their 04:00), booked or not:
+    /// the food bubbles keep their places while the others are eaten.
+    public func open(in snapshots: [HealthSnapshot], now: Date) -> [Credit] {
         snapshots.filter { now < autoBookTime(for: $0.day) }
             .sorted { $0.day < $1.day }
             .flatMap(credits(on:))
-            .filter { !booked.contains($0.id) }
+    }
+
+    /// Credits still waiting for a tap: not booked, and before their 04:00.
+    public func pending(in snapshots: [HealthSnapshot], booked: Set<String>, now: Date) -> [Credit] {
+        open(in: snapshots, now: now).filter { !booked.contains($0.id) }
     }
 
     /// Credits whose 04:00 has passed without a tap, from `since` on (earlier days count as booked
