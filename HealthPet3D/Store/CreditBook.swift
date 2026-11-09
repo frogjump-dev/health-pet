@@ -35,9 +35,10 @@ final class CreditBook {
             since = Calendar.current.date(byAdding: .day, value: -history, to: today) ?? today
             defaults?.set(since, forKey: Keys.since)
         }
-        records = defaults?.data(forKey: Keys.records)
+        let savedRecords = defaults?.data(forKey: Keys.records)
             .flatMap { try? JSONDecoder().decode([CreditRecord].self, from: $0) } ?? []
-        bookedIDs = Set(records.map(\.id))
+        records = savedRecords
+        bookedIDs = Set(savedRecords.map(\.id))
     }
 
     func add(_ new: [CreditRecord]) {
