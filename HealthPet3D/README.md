@@ -33,6 +33,7 @@ xcodebuild -project HealthPet.xcodeproj -scheme HealthPet3D \
 | `-hp3dNote asleep\|rest\|week\|day` | 主页点开某个说明（day = 日历行里的一天） |
 | `-hp3dFeed all\|workout\|steps\|night\|load` | 宠物准备好 9 秒后自动吃气泡 |
 | `-hp3dRegrow YES` | 今天吃过的食物长回来 |
+| `-hp3dBookAll YES` | 打开 Today 页 1.5 秒后吃掉今天的食物（看入账后的标签） |
 | `-hp3dRoute today\|pets\|memories\|settings\|share\|pet:toast…` | 直接打开某一页 |
 
 ## 结构
