@@ -219,6 +219,9 @@ struct HomeScreen: View {
         if tour == .tryIt { tour = nil }
         note = nil
         selectedDay = nil
+        // the tag pops up where the pet's line sits
+        lineTask?.cancel()
+        withAnimation(.easeOut(duration: 0.2)) { line = nil }
 
         stage.feed(at: CGPoint(x: at.x / layout.size.width, y: at.y / layout.size.height), then: feedback.expression)
 
@@ -507,6 +510,7 @@ struct HomeScreen: View {
     }
 
     private func say(_ text: String) {
+        guard feeds.isEmpty else { return }   // a harvest's tag has that place
         lineTask?.cancel()
         withAnimation(.spring(duration: 0.3)) { line = text }
         lineTask = Task {
@@ -573,7 +577,12 @@ struct HomeScreen: View {
             case "asleep": note = .asleep
             case "rest": note = .rest
             case "week": note = .week
-            default: selectedDay = model.weekStrip.first { model.dayNote($0) != nil }?.id
+            default:
+                // A day only has a note once something is booked; on a Monday morning nothing is.
+                if !model.weekStrip.contains(where: { model.dayNote($0) != nil }) {
+                    for bubble in model.foodBubbles { _ = model.book(bubble.credit) }
+                }
+                selectedDay = model.weekStrip.first { model.dayNote($0) != nil }?.id
             }
         }
         if let which = defaults.string(forKey: "hp3dFeed") {
@@ -581,6 +590,8 @@ struct HomeScreen: View {
             guard let scene = spots["scene"] else { return }
             let layout = HomeLayout(size: scene.size, anchors: stage.anchors(for: model.mainPet3D.id) ?? .standard)
             for bubble in model.foodBubbles where which == "all" || bubble.credit.kind.rawValue == which {
+                // The clock time lets sim-shots.sh find this moment in its recording.
+                FileHandle.standardError.write(Data("[feed] \(bubble.id) \(Date().timeIntervalSince1970)\n".utf8))
                 harvest(bubble, layout: layout)
                 try? await Task.sleep(for: .seconds(2.2))
             }
