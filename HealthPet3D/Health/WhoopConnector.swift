@@ -3,9 +3,9 @@ import UIKit
 
 /// Runs the Whoop OAuth flow in a system browser sheet:
 /// our backend hands out the authorize URL, Whoop redirects back to the backend, and the
-/// backend finally sends the browser to healthpet://whoop/connected?status=ok|error.
+/// backend finally sends the browser to ovenpals://whoop/connected?status=ok|error.
 final class WhoopConnector: NSObject, ASWebAuthenticationPresentationContextProviding {
-    static let callbackScheme = "healthpet"
+    static let callbackScheme = "ovenpals"   // must match APP_RETURN_URL in the backend
 
     private var session: ASWebAuthenticationSession?
 
