@@ -7,7 +7,7 @@ Apple Health data never comes here; it stays on the phone.
 App ──(anonymous Supabase session)──► whoop-connect ──► Whoop login in a browser sheet
                                                          │
 Whoop ──► whoop-callback (exchange code, store encrypted tokens, backfill 30 days)
-      │                    └──► redirect healthpet://whoop/connected?status=ok
+      │                    └──► redirect ovenpals://whoop/connected?status=ok
       └─► whoop-webhook (sleep/recovery updated → re-sync last 3 days)
 
 App ──► snapshots?from&to (re-syncs if older than 30 min) ──► daily_snapshots
@@ -54,5 +54,7 @@ npm run typecheck
    WHOOP_REDIRECT_URI=https://<project-ref>.supabase.co/functions/v1/whoop-callback
    TOKEN_ENCRYPTION_KEY=<output of: openssl rand -base64 32>
    ```
+   Optional: `APP_RETURN_URL` (default `ovenpals://whoop/connected`). Its scheme must be the app's
+   `WhoopConnector.callbackScheme`, or the Whoop sign-in sheet never closes back into the app.
 4. **App**: copy `Config/Secrets.example.xcconfig` to `Config/Secrets.xcconfig`, fill in the
    project ref and anon key, then `xcodegen generate`.

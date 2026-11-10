@@ -1,6 +1,6 @@
 // GET /whoop-callback?code=…&state=…  (Whoop redirects the browser here)
 // Exchanges the code, stores encrypted tokens, backfills 30 days, then sends the browser
-// back to the app: healthpet://whoop/connected?status=ok|error
+// back to the app: ovenpals://whoop/connected?status=ok|error
 
 import { getProfile, exchangeCode } from "../_shared/whoopClient.ts";
 import { adminClient, loadConfig, saveTokens, syncUser } from "../_shared/service.ts";

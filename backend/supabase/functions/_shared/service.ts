@@ -13,7 +13,7 @@ export interface Config {
   whoopClientSecret: string;
   whoopRedirectUri: string;
   tokenKey: string;
-  /** Where the browser goes after OAuth, e.g. healthpet://whoop/connected */
+  /** Where the browser goes after OAuth, e.g. ovenpals://whoop/connected (the app's callback scheme, WhoopConnector.callbackScheme) */
   appReturnUrl: string;
 }
 
@@ -30,7 +30,7 @@ export function loadConfig(): Config {
     whoopClientSecret: get("WHOOP_CLIENT_SECRET"),
     whoopRedirectUri: get("WHOOP_REDIRECT_URI"),
     tokenKey: get("TOKEN_ENCRYPTION_KEY"),
-    appReturnUrl: Deno.env.get("APP_RETURN_URL") ?? "healthpet://whoop/connected",
+    appReturnUrl: Deno.env.get("APP_RETURN_URL") ?? "ovenpals://whoop/connected",
   };
 }
 
