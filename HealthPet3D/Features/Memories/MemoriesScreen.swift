@@ -17,9 +17,9 @@ struct MemoriesScreen: View {
             HStack(spacing: 14) {
                 PetPicture(pet: model.mainPet3D, happy: true).frame(width: 52, height: 52)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("\(model.daysTogether)").font(.rounded(28, .bold)).foregroundStyle(Jade.ink).monospacedDigit()
+                    Text("\(model.daysTogether)").scaledFont(28, .bold).foregroundStyle(Jade.ink).monospacedDigit()
                     Label(model.daysTogether == 1 ? "day together" : "days together", systemImage: "heart")
-                        .font(.rounded(13, .semibold))
+                        .scaledFont(13, .semibold)
                         .foregroundStyle(Jade.ink2)
                 }
                 Spacer()
@@ -32,7 +32,7 @@ struct MemoriesScreen: View {
             let collected = Array(model.creditRecords.prefix(60))
             if !collected.isEmpty {
                 Text("Collected")
-                    .font(.rounded(15, .semibold))
+                    .scaledFont(15, .semibold)
                     .foregroundStyle(Jade.ink)
                     .padding(.top, 14)
                     .padding(.leading, 4)
@@ -54,13 +54,13 @@ struct LedgerRow: View {
                 .frame(width: 44, height: 44)
             VStack(alignment: .leading, spacing: 3) {
                 Text(title)
-                    .font(.rounded(17, .semibold))
+                    .scaledFont(17, .semibold)
                     .foregroundStyle(Jade.ink)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
                 Text(entry.day.formatted(.dateTime.year().month(.abbreviated).day()))
-                    .font(.rounded(12, .semibold))
-                    .foregroundStyle(Jade.ink3)
+                    .scaledFont(12, .semibold)
+                    .foregroundStyle(Jade.ink2)
             }
             Spacer(minLength: 0)
         }
@@ -132,12 +132,12 @@ struct CreditRow: View {
                 .frame(width: 44)
             VStack(alignment: .leading, spacing: 3) {
                 Text(record.detail)
-                    .font(.rounded(16, .semibold))
+                    .scaledFont(16, .semibold)
                     .foregroundStyle(Jade.ink)
                     .lineLimit(1)
                 Text(subtitle)
-                    .font(.rounded(12, .semibold))
-                    .foregroundStyle(Jade.ink3)
+                    .scaledFont(12, .semibold)
+                    .foregroundStyle(Jade.ink2)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
             }

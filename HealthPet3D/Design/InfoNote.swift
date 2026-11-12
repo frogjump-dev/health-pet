@@ -10,10 +10,10 @@ struct InfoNote<Content: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title)
-                .font(.rounded(15, .bold))
+                .scaledFont(15, .bold)
                 .foregroundStyle(Jade.ink)
             content()
-                .font(.rounded(13, .medium))
+                .scaledFont(13, .medium)
                 .foregroundStyle(Jade.ink2)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -71,7 +71,7 @@ struct WeekNote: View {
                 // a night counts on the morning you wake up (PRD v0.3 §4.1)
                 (Text("3 + 5 = a disciplined week, Monday to Sunday.").bold().foregroundStyle(Jade.ink)
                     + Text(" Nights count on the morning you wake up.").foregroundStyle(Jade.ink2))
-                    .font(.rounded(13, .medium))
+                    .scaledFont(13, .medium)
             }
         }
     }

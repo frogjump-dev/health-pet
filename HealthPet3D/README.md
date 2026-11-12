@@ -108,7 +108,7 @@ PRD v0.2 §4.3 / §4.4 / §6 已定。设计稿：`健康宠物/3D方案/ui-fina
 - **名词标签**：底栏 Pets · Today · Memories，状态区 Asleep · Rest · This week，都带图标（v0.3 起 Apple Watch 用户的第二行是 Slept）。
 - **点一下有说明**：Asleep、Rest、This week（逐格解释）和日历行的每一天都会弹出小卡片。
 - **日历行 B**：圆点换成 11 pt 的跑步 / 月亮图标，没有的那天是短横。
-- **首次打开 6 页**：你好 → 连 Apple Health（说明会读哪四类数据）→ 读取进度 → 「You’ve already met two pets」→ 入睡时间（可分周末）→ 主页。
+- **首次打开 6 页**：你好 → 连 Apple Health（说明会读哪四类数据）→ 读取进度 → 「You’ve already met two pets」→ 入睡时间（可分周末）→ 主页（v0.3 起入睡时间放到读取前面）。
 - **宠物 3 步导览**（`Features/Home/HomeTour.swift`）：首次进主页、宠物醒来之后，压暗其余部分、只亮一块，宠物用一句话讲
   食物 → 记录 → 底栏，最后一个真气泡上「Tap to feed Toast」。随时可以 Skip；「…」里的「Show me around」可以再看一遍。
 - **Today 六处改动**：日期行；Asleep 卡 + 「✓ Early night」；运动卡 + 「✓ Workout」+ 距离和配速；步数「of 10k」；
@@ -134,6 +134,25 @@ PRD v0.3 §10.3「已定、还没做」分四批做，这是第 1 批「只读�
 - **没有睡眠数据**：30 天里一晚睡眠都没有时，Asleep 的说明小卡换成 “I can’t see your sleep yet. Wear your watch to bed and the moon shows up.”；
   连了 Apple 健康却连续 3 天以上什么数据都没有时，Settings 的 Apple Health 组多一行，说明去「健康」App 的哪里打开权限。
 
+### 第 2 批：界面和设置（2026-11-12）
+
+- **首次打开顺序**：你好 → Apple 健康（说明会读哪四类数据；底句改成 “…your health data never leaves it, and you can turn any of
+  these off in the Health app.”）→ 入睡时间 → 读取最近 30 天 → 已经认识的宠物 → 主页。入睡时间放到读取前面，第 ⑤ 页的等级就是主页上的等级。
+  一只都没认识时不再跳页，只是 Toast 说一句；30 天里没有睡眠时，这句换成 “I can’t see your sleep yet…”。
+- **睡前提醒只问一次**：第一次吃掉准时的月亮之后，宠物问 “Want me to yawn at you 30 minutes before bed?”（Not now / Sure），
+  点 Sure 才弹系统的通知权限。不管答什么都不再问，开关在 Settings。
+- **24 / 12 小时制**（`Model/ClockStyle.swift`）：Settings → Look → Time format。没选过就跟手机走。所有时间都走 `Format`：
+  主页和 Today 的大数字后面跟一个小号灰色的 PM；月亮气泡只写 10:48、不写 PM。
+- **「手表记错了」**：Today 的 Asleep 卡上，晚睡（或没记到）的那晚下面有 “Watch got it wrong?”，选真正的入睡时间，
+  只有算准时才能保存；每月 2 次，和每周一次的请假分开；保存后显示手表原来记的时间和 Undo。只改这晚准不准时，不单独进流水。
+- **颜色对比度**（PRD §8.1）：次要文字 #626B5D，所有常显的标签都用它；夜间不活跃色 #7E877A；空格子 1 pt #7D857A 描边；
+  白天柠檬绿的格子和 Whoop 恢复条加 1 pt #8A8331 描边。
+- **动态字号**：Today、Memories、Settings、首次打开跟系统字号走（`.scaledFont`）；主页最多放大两档；分享卡和宠物格子不变。
+- **减弱动态效果**：气泡不浮动；收获改成气泡淡出、格子直接填上、头边说一句；宠物身体不动，只眨眼和换表情。
+- **主页**：Asleep 行不再有空心圈（入账后直接出勾）；底栏中间的 Today 图标换成三根小柱，三个名字都是次要灰。
+- **Pets**：「还能遇见谁」那格只写 Still to meet，不写数量；宠物页的 Dress up 先藏起来。
+- **Settings → About**：版本号、隐私政策、意见反馈。链接在 `project.yml` 的 `PrivacyPolicyURL` / `FeedbackURL`，空着时显示 Soon。
+
 ## 首页的数据
 
 - 食物气泡：每次 ≥ 20 分钟的运动（最多两个，图标是运动类型）、≥ 1 万步、昨晚的入睡、有 Whoop 时的当天 strain。点一下入账；
@@ -143,5 +162,5 @@ PRD v0.3 §10.3「已定、还没做」分四批做，这是第 1 批「只读�
 
 ## 还没做
 
-- 小装饰品（Dress up 还是占位，样式待设计，PRD §5.4）。
+- 小装饰品（Dress up 先藏起来了；51 件已在 PRD §5.4 定好，还没写代码）。
 - 分享卡的 Milestone 卡、数据详情页。

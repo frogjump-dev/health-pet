@@ -1,17 +1,18 @@
 import SwiftUI
 import PetCore
 
-/// The first open (PRD v0.2 §6, v3.4, decided 2026-11-09). Each page = a title, two lines at
-/// most, one main button:
+/// The first open (PRD v0.2 §6, v3.4; order changed in v0.3, decided 2026-11-10). Each page = a
+/// title, two lines at most, one main button:
 /// ① Toast says hello → ② the four kinds of Apple Health data it reads (only telling; the real
-/// switches are the system sheet and Settings) → ③ reading the last 30 days → ④ the pets those
-/// days already earned, at their levels (skipped when there are none) → ⑤ the bedtime target →
-/// ⑥ home, where the pet shows the user around.
+/// switches are the system sheet and the Health app) → ③ the bedtime target → ④ reading the last
+/// 30 days → ⑤ the pets those days already earned, at the levels the chosen target gives (just a
+/// word from Toast when there are none) → ⑥ home, where the pet shows the user around.
+/// The bedtime comes before the reading so the levels on ⑤ are the ones home will show.
 struct FirstOpenScreen: View {
     @Environment(AppModel.self) private var model
     @Environment(HomeState.self) private var home
 
-    private enum Step: Int { case hello, health, reading, pets, bedtime }
+    private enum Step: Int { case hello, health, bedtime, reading, pets }
     @State private var step: Step = {
         #if DEBUG
         // For screenshots on the simulator: -hp3dFirstOpenStep health|reading|pets|bedtime
@@ -49,11 +50,11 @@ struct FirstOpenScreen: View {
     private func title(_ text: String, _ line: String) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(text)
-                .font(.rounded(30, .bold))
+                .scaledFont(30, .bold)
                 .foregroundStyle(Jade.ink)
                 .fixedSize(horizontal: false, vertical: true)
             Text(line)
-                .font(.rounded(15, .medium))
+                .scaledFont(15, .medium)
                 .foregroundStyle(Jade.ink2)
                 .lineSpacing(3)
                 .fixedSize(horizontal: false, vertical: true)
@@ -72,11 +73,11 @@ struct FirstOpenScreen: View {
                     Ellipse().fill(Jade.accent.opacity(0.16)).frame(width: 230, height: 40).offset(y: 6)
                 }
             Text("Hi, I’m Toast.")
-                .font(.rounded(26, .bold))
+                .scaledFont(26, .bold)
                 .foregroundStyle(Jade.ink)
                 .padding(.top, 40)
             Text("I grow from your walks, workouts and sleep.\nNothing to log, nothing to type.")
-                .font(.rounded(15, .medium))
+                .scaledFont(15, .medium)
                 .foregroundStyle(Jade.ink2)
                 .multilineTextAlignment(.center)
                 .lineSpacing(3)
@@ -101,9 +102,9 @@ struct FirstOpenScreen: View {
             }
             .padding(.top, 24)
             Spacer()
-            Text("Everything is calculated on your phone. Only a daily summary is stored, and you can switch any of these off in Settings.")
-                .font(.rounded(12, .medium))
-                .foregroundStyle(Jade.ink3)
+            Text("Everything is worked out on your phone. Your health data never leaves it, and you can turn any of these off in the Health app.")
+                .scaledFont(12, .medium)
+                .foregroundStyle(Jade.ink2)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity)
                 .padding(.bottom, 14)
@@ -114,7 +115,7 @@ struct FirstOpenScreen: View {
                         await model.connectAppleHealth()
                         connecting = false
                     }
-                    step = .reading
+                    step = .bedtime
                 }
             } label: {
                 if connecting { ProgressView().tint(Jade.onPrimary) } else { Text("Allow Apple Health") }
@@ -132,8 +133,8 @@ struct FirstOpenScreen: View {
                 .frame(width: 38, height: 38)
                 .background(Circle().fill(Jade.fill))
             VStack(alignment: .leading, spacing: 2) {
-                Text(name).font(.rounded(15, .bold)).foregroundStyle(Jade.ink)
-                Text(use).font(.rounded(13, .medium)).foregroundStyle(Jade.ink2)
+                Text(name).scaledFont(15, .bold).foregroundStyle(Jade.ink)
+                Text(use).scaledFont(13, .medium).foregroundStyle(Jade.ink2)
             }
             Spacer(minLength: 0)
         }
@@ -141,7 +142,7 @@ struct FirstOpenScreen: View {
         .accessibilityElement(children: .combine)
     }
 
-    // MARK: - ③ Reading the last 30 days
+    // MARK: - ④ Reading the last 30 days
 
     private var reading: some View {
         VStack(spacing: 0) {
@@ -152,14 +153,14 @@ struct FirstOpenScreen: View {
                     Ellipse().fill(Jade.accent.opacity(0.16)).frame(width: 190, height: 34).offset(y: 6)
                 }
             Text("Reading your last 30 days…")
-                .font(.rounded(22, .bold))
+                .scaledFont(22, .bold)
                 .foregroundStyle(Jade.ink)
                 .padding(.top, 40)
             Track(fraction: progress, color: Jade.accent)
                 .frame(width: 280)
                 .padding(.top, 22)
             Text("Looking for pets you’ve already met.")
-                .font(.rounded(13, .medium))
+                .scaledFont(13, .medium)
                 .foregroundStyle(Jade.ink2)
                 .padding(.top, 16)
             Spacer()
@@ -167,17 +168,21 @@ struct FirstOpenScreen: View {
         }
         .frame(maxWidth: .infinity)
         .task {
-            // the bar takes 2.5 s at least, and waits for the data (usually 2–5 s)
+            // the bar takes 2.5 s at least, and waits for the data (usually 2–5 s); read again
+            // now so the levels follow the bedtime just chosen
             withAnimation(.easeInOut(duration: 2.5)) { progress = 0.9 }
-            try? await Task.sleep(for: .seconds(2.5))
+            let started = Date()
             while model.isLoading { try? await Task.sleep(for: .milliseconds(200)) }
+            await model.refresh()
+            let left = 2.5 - Date().timeIntervalSince(started)
+            if left > 0 { try? await Task.sleep(for: .seconds(left)) }
             withAnimation(.easeOut(duration: 0.3)) { progress = 1 }
             try? await Task.sleep(for: .seconds(0.4))
-            step = earned.isEmpty ? .bedtime : .pets
+            step = .pets
         }
     }
 
-    // MARK: - ④ The pets you've already met
+    // MARK: - ⑤ The pets you've already met
 
     private var earned: [PetRecord] {
         model.petRecords.filter { $0.isUnlocked && $0.pet.activity != nil }
@@ -185,7 +190,12 @@ struct FirstOpenScreen: View {
 
     private static let words = ["no", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"]
 
+    @ViewBuilder
     private var pets: some View {
+        if earned.isEmpty { noPetsYet } else { metPets }
+    }
+
+    private var metPets: some View {
         let count = earned.count
         let number = count < Self.words.count ? Self.words[count] : "\(count)"
         return VStack(alignment: .leading, spacing: 0) {
@@ -200,18 +210,59 @@ struct FirstOpenScreen: View {
                 .padding(.top, 24)
             }
             .scrollIndicators(.hidden)
-            Text("Toast is your first companion. Everyone else lives in Pets.")
-                .font(.rounded(12, .medium))
-                .foregroundStyle(Jade.ink3)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 14)
-            Button("Nice") { step = .bedtime }
+            if model.hasSleepData {
+                Text("Toast is your first companion. Everyone else lives in Pets.")
+                    .scaledFont(12, .medium)
+                    .foregroundStyle(Jade.ink2)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+            } else {
+                toastSays(AppModel.noSleepLine)
+                    .padding(.vertical, 14)
+            }
+            Button("Nice") { finish() }
                 .buttonStyle(PillButtonStyle(primary: true))
         }
         .accessibilityElement(children: .contain)
     }
 
-    // MARK: - ⑤ Bedtime
+    /// No pets from the last 30 days: no page of its own, just a word from Toast (and, without any
+    /// sleep, how the moon comes, PRD v0.3 §6).
+    private var noPetsYet: some View {
+        VStack(spacing: 0) {
+            Spacer()
+            PetPicture(pet: .toast, happy: true)
+                .frame(width: 210, height: 210)
+                .background(alignment: .bottom) {
+                    Ellipse().fill(Jade.accent.opacity(0.16)).frame(width: 190, height: 34).offset(y: 6)
+                }
+            SpeechBubble(text: model.hasSleepData ? "Your first walk or workout grows a snack. Let’s go!" : AppModel.noSleepLine)
+                .padding(.top, 28)
+                .padding(.horizontal, 12)
+            Spacer()
+            Button("Let’s go") { finish() }
+                .buttonStyle(PillButtonStyle(primary: true))
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    /// A line from Toast with its small picture.
+    private func toastSays(_ text: String) -> some View {
+        HStack(alignment: .center, spacing: 10) {
+            PetPicture(pet: .toast).frame(width: 44, height: 44)
+            SpeechBubble(text: text)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    /// ⑥ Home, where the pet wakes up and shows the user around.
+    private func finish() {
+        home.welcomeQuietly(model.unlockedPets)
+        home.tourDone = false
+        home.onboarded = true
+    }
+
+    // MARK: - ③ Bedtime
 
     private var bedtime: some View {
         @Bindable var model = model
@@ -220,7 +271,7 @@ struct FirstOpenScreen: View {
                   "Within 30 minutes after this counts as on time. Five on-time nights a week make the early-nights half of a disciplined week.")
             Picker("Asleep by", selection: $model.sleepSchedule.bedtimeMinutes) {
                 ForEach(SleepOptions.bedtimes, id: \.self) { minutes in
-                    Text(SleepSchedule.clock(minutes)).font(.rounded(22, .semibold)).tag(minutes)
+                    Text(SleepSchedule.clock(minutes)).scaledFont(22, .semibold).tag(minutes)
                 }
             }
             .pickerStyle(.wheel)
@@ -228,8 +279,8 @@ struct FirstOpenScreen: View {
             .padding(.top, 8)
             Toggle(isOn: weekendsApart) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Different on weekends").font(.rounded(15, .bold)).foregroundStyle(Jade.ink)
-                    Text("Set a later time for Friday and Saturday").font(.rounded(12, .medium)).foregroundStyle(Jade.ink2)
+                    Text("Different on weekends").scaledFont(15, .bold).foregroundStyle(Jade.ink)
+                    Text("Set a later time for Friday and Saturday").scaledFont(12, .medium).foregroundStyle(Jade.ink2)
                 }
             }
             .tint(Jade.accent)
@@ -245,12 +296,9 @@ struct FirstOpenScreen: View {
                 .frame(maxWidth: .infinity, alignment: .trailing)
             }
             Spacer()
-            Button("Done") {
-                home.welcomeQuietly(model.unlockedPets)
-                home.tourDone = false
-                home.onboarded = true
-            }
-            .buttonStyle(PillButtonStyle(primary: true))
+            // the levels on the next pages follow this target, so it is set before the reading
+            Button("Continue") { step = .reading }
+                .buttonStyle(PillButtonStyle(primary: true))
         }
     }
 
@@ -278,16 +326,16 @@ private struct MetCard: View {
                 .background(alignment: .bottom) {
                     Ellipse().fill(Jade.ink.opacity(0.08)).frame(width: 84, height: 16).offset(y: 4)
                 }
-            Text(record.pet.name).font(.rounded(16, .bold)).foregroundStyle(Jade.ink).padding(.top, 6)
+            Text(record.pet.name).scaledFont(16, .bold).foregroundStyle(Jade.ink).padding(.top, 6)
             Text("Lv \(record.level)")
-                .font(.rounded(11, .heavy))
+                .scaledFont(11, .heavy)
                 .foregroundStyle(sleepy ? Jade.onSleep : Jade.onAccent)
                 .padding(.horizontal, 9)
                 .frame(height: 20)
                 .background(Capsule().fill(sleepy ? Jade.sleep : Jade.accent))
             if let activity {
                 Text(earned(activity))
-                    .font(.rounded(12, .medium))
+                    .scaledFont(12, .medium)
                     .foregroundStyle(Jade.ink2)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)

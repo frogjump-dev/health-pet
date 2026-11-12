@@ -263,9 +263,20 @@ final class AppModel {
 
     /// The days last evaluated (up to 30), so a leave day can be applied without fetching again.
     @ObservationIgnored private(set) var recentDays: [HealthSnapshot] = []
+    /// `recentDays` as they count: with the nights the user fixed (「手表记错了」).
+    @ObservationIgnored private(set) var countedDays: [HealthSnapshot] = []
 
-    private func evaluate(_ snapshots: [HealthSnapshot], now: Date, recordMemories: Bool) {
-        if recentDays.isEmpty { recentDays = snapshots }
+    private func evaluate(_ raw: [HealthSnapshot], now: Date, recordMemories: Bool) {
+        if recentDays.isEmpty { recentDays = raw }
+        // 「手表记错了」: a night the user fixed counts with the time they gave (PRD v0.3 §4.2)
+        let fixes = store.sleepFixes
+        let snapshots = fixes.isEmpty ? raw : raw.map { day in
+            guard let onset = fixes[day.day] else { return day }
+            var fixed = day
+            fixed.sleepOnset = onset
+            return fixed
+        }
+        countedDays = snapshots
         let todayStart = Calendar.current.startOfDay(for: now)
         guard let todaySnapshot = snapshots.first(where: { $0.day == todayStart }) else { return }
         let history = snapshots.filter { $0.day < todayStart }
@@ -361,9 +372,6 @@ struct SleepSchedule: Codable, Equatable {
         return bed > wake ? (now >= bed || now < wake) : (now >= bed && now < wake)
     }
 
-    /// "23:00", "00:30"
-    static func clock(_ minutes: Int) -> String {
-        let m = ((minutes % 1440) + 1440) % 1440
-        return String(format: "%02d:%02d", m / 60, m % 60)
-    }
+    /// "23:00" / "11:00 PM", "00:30" / "12:30 AM", in the clock style chosen in Settings.
+    static func clock(_ minutes: Int) -> String { Format.time(minutes: minutes) }
 }

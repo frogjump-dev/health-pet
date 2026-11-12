@@ -19,6 +19,9 @@ final class PetStore {
     /// Nights the user took as a leave day (the morning each night ended on). One a week counts
     /// as an on-time night, no reason needed.
     private(set) var leaveDays: Set<Date>
+    /// 「手表记错了」 (PRD v0.3 §4.2): when the user says they really fell asleep, by the morning
+    /// the night ended on. It only decides whether that night was on time; it is not a ledger line.
+    private(set) var sleepFixes: [Date: Date]
 
     private let defaults: UserDefaults
 
@@ -29,6 +32,7 @@ final class PetStore {
         static let disciplinedWeeks = "disciplinedWeeks"
         static let activityLog = "activityLog"
         static let leaveDays = "leaveDays"
+        static let sleepFixes = "sleepFixes"
     }
 
     init(defaults: UserDefaults = .standard) {
@@ -50,6 +54,19 @@ final class PetStore {
             return known.isEmpty ? nil : known
         }
         leaveDays = Self.decode(Set<Date>.self, defaults.data(forKey: Keys.leaveDays)) ?? []
+        sleepFixes = Self.decode([Date: Date].self, defaults.data(forKey: Keys.sleepFixes)) ?? [:]
+    }
+
+    // MARK: - Watch got it wrong
+
+    /// A night's real time of falling asleep (nil takes the fix back).
+    func setSleepFix(_ onset: Date?, nightEnding day: Date) {
+        let morning = Calendar.current.startOfDay(for: day)
+        var updated = sleepFixes
+        updated[morning] = onset
+        guard updated != sleepFixes else { return }
+        sleepFixes = updated
+        defaults.set(try? JSONEncoder().encode(updated), forKey: Keys.sleepFixes)
     }
 
     // MARK: - Leave days

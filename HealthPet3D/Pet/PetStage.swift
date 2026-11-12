@@ -36,6 +36,9 @@ struct PetStageConfig: Equatable, Encodable {
     /// The slow condition of the last 7 days (PRD v0.2 §5.5): "lively" | "normal" | "low".
     /// Only the idle behaviour and the floor's tint change.
     var energy = "normal"
+    /// Reduce Motion is on (PRD v0.3 §8.2): the pet keeps its blinks and its faces, nothing moves.
+    /// Filled in by `PetStage` from the system setting each time the config is sent.
+    var calm = false
     var interactive = true
     /// The pet's 100 × 100 box inside the web view: x and size as fractions of the width, y of the height.
     var box = Box(x: 0.19, y: 0.245, size: 0.62)
@@ -156,7 +159,9 @@ final class PetStage {
         host.addSubview(webView)
     }
 
-    private func apply(_ new: PetStageConfig) {
+    private func apply(_ given: PetStageConfig) {
+        var new = given
+        new.calm = UIAccessibility.isReduceMotionEnabled
         guard new != config else { return }
         // the page mounts the pet again for a different pet or floor: the still stands in meanwhile
         if config.map({ $0.pet != new.pet || $0.rug != new.rug }) ?? true { hasDrawn = false }
@@ -251,8 +256,10 @@ final class PetStage {
         #endif
     }
 
-    private static func initScript(_ config: PetStageConfig) -> WKUserScript {
-        WKUserScript(source: "window.PET_INIT = \(json(config));", injectionTime: .atDocumentStart, forMainFrameOnly: true)
+    private static func initScript(_ given: PetStageConfig) -> WKUserScript {
+        var config = given
+        config.calm = UIAccessibility.isReduceMotionEnabled
+        return WKUserScript(source: "window.PET_INIT = \(json(config));", injectionTime: .atDocumentStart, forMainFrameOnly: true)
     }
 
     private static func load(_ web: WKWebView) {

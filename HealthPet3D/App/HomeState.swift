@@ -39,6 +39,11 @@ final class HomeState {
     var notifyMorning: Bool {
         didSet { defaults.set(notifyMorning, forKey: Keys.notifyMorning) }
     }
+    /// The pet asked once, after the first on-time moon, whether to yawn before bed (PRD v0.3 §6).
+    /// Whatever the answer, it never asks again; the switch stays in Settings.
+    var askedAboutBedtime: Bool {
+        didSet { defaults.set(askedAboutBedtime, forKey: Keys.askedAboutBedtime) }
+    }
     /// Test build: show a pet energy other than the one the data gives (nil = from the data).
     var energyOverride: PetEnergy? {
         didSet { defaults.set(energyOverride?.rawValue, forKey: Keys.energyOverride) }
@@ -70,6 +75,7 @@ final class HomeState {
         static let onboarded = "3d.onboarded"
         static let notifyBedtime = "3d.notifyBedtime"
         static let notifyMorning = "3d.notifyMorning"
+        static let askedAboutBedtime = "3d.askedAboutBedtime"
         static let energyOverride = "3d.energyOverride"
         static let welcomedPets = "3d.welcomedPets"
         static let celebratedWeek = "3d.celebratedWeek"
@@ -87,6 +93,7 @@ final class HomeState {
         onboarded = defaults.bool(forKey: Keys.onboarded)
         notifyBedtime = defaults.bool(forKey: Keys.notifyBedtime)
         notifyMorning = defaults.bool(forKey: Keys.notifyMorning)
+        askedAboutBedtime = defaults.bool(forKey: Keys.askedAboutBedtime)
         energyOverride = defaults.string(forKey: Keys.energyOverride).flatMap(PetEnergy.init(rawValue:))
         welcomedPets = Set(defaults.stringArray(forKey: Keys.welcomedPets) ?? [])
         celebratedWeek = defaults.object(forKey: Keys.celebratedWeek) as? Date

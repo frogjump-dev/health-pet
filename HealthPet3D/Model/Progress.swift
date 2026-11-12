@@ -41,6 +41,51 @@ extension AppModel {
     /// Last night is this week's leave day.
     var lastNightIsLeave: Bool { leaveDays.contains(lastNight) }
 
+    // MARK: - Watch got it wrong (PRD v0.3 §4.2)
+
+    /// Fixes allowed per calendar month, apart from the weekly leave night.
+    static let sleepFixesPerMonth = 2
+
+    /// The time the user gave for last night, if they fixed it.
+    var lastNightFix: Date? { store.sleepFixes[lastNight] }
+
+    /// Fixes still free in last night's month.
+    var sleepFixesLeft: Int {
+        let calendar = Calendar.current
+        let used = store.sleepFixes.keys.filter { calendar.isDate($0, equalTo: lastNight, toGranularity: .month) }.count
+        return max(0, Self.sleepFixesPerMonth - used)
+    }
+
+    /// Last night can be fixed: it was not on time as recorded (late, or nothing recorded), it is
+    /// not the leave night, and a fix is left this month. A fixed night can always be undone.
+    var canFixLastNight: Bool {
+        if lastNightFix != nil { return true }
+        return !sleptOnTime && !lastNightIsLeave && sleepFixesLeft > 0
+    }
+
+    /// Saves (or takes back, with nil) the time the user really fell asleep last night.
+    func fixLastNight(_ onset: Date?) {
+        store.setSleepFix(onset, nightEnding: lastNight)
+        reevaluate()
+    }
+
+    /// What the watch recorded for last night, before any fix.
+    var lastNightRecordedOnset: Date? { recentDays.first { $0.day == lastNight }?.sleepOnset }
+
+    /// The latest time to fall asleep that still counts for last night (target + 30 minutes).
+    var lastNightDeadline: Date {
+        let tracker = discipline
+        return tracker.target(forNightEnding: lastNight).addingTimeInterval(TimeInterval(tracker.rules.bedtimeGraceMinutes * 60))
+    }
+
+    /// `minutes` after midnight as last night's moment: evening times fall on the day before.
+    func lastNightMoment(minutes: Int) -> Date {
+        let calendar = Calendar.current
+        let m = ((minutes % 1440) + 1440) % 1440
+        let base = m >= 12 * 60 ? calendar.date(byAdding: .day, value: -1, to: lastNight) ?? lastNight : lastNight
+        return calendar.date(byAdding: .minute, value: m, to: base) ?? base
+    }
+
     /// Last night was late (or has no sleep data) and this week's leave day is still free.
     var canTakeLeaveLastNight: Bool {
         guard !sleptOnTime, !lastNightIsLeave else { return false }
@@ -98,7 +143,7 @@ extension AppModel {
         let calendar = tracker.calendar
         let todayStart = calendar.startOfDay(for: Date())
         guard let yesterdayStart = calendar.date(byAdding: .day, value: -1, to: todayStart),
-              let yesterday = recentDays.first(where: { $0.day == yesterdayStart }) else { return false }
+              let yesterday = countedDays.first(where: { $0.day == yesterdayStart }) else { return false }
         let yesterdayDone = tracker.countsAsWorkout(yesterday) || tracker.isOnTimeNight(yesterday) == true
             || leaveDays.contains(yesterdayStart)
         return !yesterdayDone && !sleptOnTime && !lastNightIsLeave

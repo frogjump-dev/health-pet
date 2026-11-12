@@ -74,7 +74,7 @@ extension AppModel {
             }
             guard let slot = preferred[kind]?.first(where: { !taken.contains($0) }) else { continue }
             taken.insert(slot)
-            guard shown, let day = recentDays.first(where: { $0.day == credit.day }) else { continue }
+            guard shown, let day = countedDays.first(where: { $0.day == credit.day }) else { continue }
             result.append(bubble(credit, kind: kind, day: day, slot: slot))
         }
         return result
@@ -101,8 +101,10 @@ extension AppModel {
             return FoodBubble(credit: credit, kind: kind, icon: "shoeprints.fill", label: Format.short(steps), slot: slot,
                               spoken: "\(steps.formatted()) steps")
         case .night:
-            let onset = day.sleepOnset.map(Format.time) ?? "–"
-            return FoodBubble(credit: credit, kind: kind, icon: "moon", label: onset, slot: slot, spoken: "Last night, asleep at \(onset)")
+            // 50 pt: "10:48" without PM even on the 12-hour clock (PRD v0.3 §6, suggestion)
+            let onset = day.sleepOnset.map(Format.shortTime) ?? "–"
+            let spoken = day.sleepOnset.map(Format.time) ?? "–"
+            return FoodBubble(credit: credit, kind: kind, icon: "moon", label: onset, slot: slot, spoken: "Last night, asleep at \(spoken)")
         case .load:
             let strain = String(format: "%.1f", day.strain ?? 0)
             return FoodBubble(credit: credit, kind: kind, icon: "gauge.with.dots.needle.50percent", label: strain, slot: slot,
@@ -139,7 +141,7 @@ extension AppModel {
     /// line) and the home gets what it needs for the moment after the pet has eaten.
     func book(_ credit: Credit) -> BookingFeedback {
         let now = Date()
-        let days = recentDays
+        let days = countedDays
         let activity = beneficiary(of: credit, in: days)
         let pet = activity.flatMap { a in Pet3D.all.first { $0.activity == a } }
         let before = pet.map { record($0).level } ?? 0

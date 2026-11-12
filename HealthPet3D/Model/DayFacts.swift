@@ -5,18 +5,22 @@ import PetCore
 /// cross), then what the wearable recorded (PRD v0.3 「只读原值」): last night's sleep for Apple
 /// Watch users ("Slept 7h 30m"), Whoop's recovery as a bar without a number for Whoop users.
 struct HomeStatus {
-    /// "22:48", nil without sleep data.
+    /// "22:48" (or "10:48" on the 12-hour clock), nil without sleep data.
     let onset: String?
-    /// On time, and the moon was eaten: the lime check is lit.
+    /// "PM" on the 12-hour clock, shown smaller after the time.
+    let onsetPeriod: String?
+    /// On time, and the moon was eaten: the lime check is lit. Until then the place stays empty
+    /// (no hollow ring, PRD v0.3), and the check pops in when the moon is eaten.
     let onTime: Bool
-    /// On time, but the moon still waits as a bubble: an empty ring where the check will light up.
-    let checkWaiting: Bool
     /// Whoop user: the second row is Whoop's recovery bar (with a small WHOOP mark).
     let whoop: Bool
     /// "7h 30m" asleep last night, as the watch recorded it; nil without sleep data.
     let slept: String?
     /// Whoop's recovery today, 0...1; nil = not scored yet (the bar stays empty).
     let recovery: Double?
+
+    /// "22:48" / "10:48 PM", for sentences and VoiceOver.
+    var onsetText: String? { onset.map { time in onsetPeriod.map { "\(time) \($0)" } ?? time } }
 }
 
 /// One day in the week row on home.
@@ -41,8 +45,8 @@ extension AppModel {
 
     /// Every other number lives in Today; the home shows the onset time and one more row.
     var homeStatus: HomeStatus {
-        HomeStatus(onset: today?.sleepOnset.map(Format.time), onTime: sleptOnTime && nightBooked,
-                   checkWaiting: sleptOnTime && !nightBooked, whoop: isWhoopUser,
+        let onset = today?.sleepOnset.map(Format.timeParts)
+        return HomeStatus(onset: onset?.clock, onsetPeriod: onset?.period, onTime: sleptOnTime && nightBooked, whoop: isWhoopUser,
                    slept: today?.sleepHours.map { Format.duration(hours: $0) },
                    recovery: whoopRecovery.map { $0 / 100 })
     }
@@ -141,15 +145,43 @@ enum Format {
         return (text.hasSuffix(".0") ? String(text.dropLast(2)) : text) + "k"
     }
 
-    /// "22:48", always on the 24-hour clock like the design (a 12-hour choice comes with PRD v0.3 batch 2).
-    static func time(_ date: Date) -> String { clock.string(from: date) }
+    // MARK: Clock times: the one place that knows 24-hour from 12-hour (PRD v0.3 §6)
 
-    private static let clock: DateFormatter = {
+    /// "22:48" or "10:48 PM": sentences, notes, the ledger, the share card.
+    static func time(_ date: Date) -> String {
+        let parts = timeParts(date)
+        return parts.period.map { "\(parts.clock) \($0)" } ?? parts.clock
+    }
+
+    /// "22:48" / ("10:48", "PM"): where the time is the big number (home's Asleep row, Today's
+    /// Asleep card) the period follows in a smaller, secondary grey.
+    static func timeParts(_ date: Date) -> (clock: String, period: String?) {
+        guard ClockStyle.shared.twelveHour else { return (clock24.string(from: date), nil) }
+        return (clock12.string(from: date), period.string(from: date))
+    }
+
+    /// The moon bubble has room for "10:48" only; its moon already says it was last night.
+    static func shortTime(_ date: Date) -> String { timeParts(date).clock }
+
+    /// A target in minutes after midnight: 1380 → "23:00" or "11:00 PM", 30 → "00:30" or "12:30 AM".
+    static func time(minutes: Int) -> String {
+        let m = ((minutes % 1440) + 1440) % 1440
+        let (hour, minute) = (m / 60, m % 60)
+        guard ClockStyle.shared.twelveHour else { return String(format: "%02d:%02d", hour, minute) }
+        return String(format: "%d:%02d %@", hour % 12 == 0 ? 12 : hour % 12, minute, hour < 12 ? "AM" : "PM")
+    }
+
+    private static func formatter(_ format: String) -> DateFormatter {
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")
-        f.dateFormat = "HH:mm"
+        f.dateFormat = format
         return f
-    }()
+    }
+
+    private static let clock24 = formatter("HH:mm")
+    /// No leading zero; AM / PM in capitals after a space (design 2026-11-10).
+    private static let clock12 = formatter("h:mm")
+    private static let period = formatter("a")
 
     /// 7.7 → "7h 42m"
     static func duration(hours: Double) -> String {
