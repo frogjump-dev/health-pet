@@ -43,7 +43,7 @@ targets:
         UILaunchScreen:
           UIColorName: LaunchCanvas
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
-        NSHealthShareUsageDescription: "Ovenpals reads your steps, workouts, active energy, sleep and heart rate to show your day and grow your pets. Data stays on your phone."
+        NSHealthShareUsageDescription: "Your pet reads your steps, workouts, active energy, sleep and heart rate variability to show your day and how rested you are. Data stays on your phone."
         NSHealthUpdateUsageDescription: "Ovenpals does not write to Apple Health."
         NSPhotoLibraryAddUsageDescription: "Save your share cards to Photos."
         # Settings → About opens these once they exist (https:// or mailto:); empty = "Soon".

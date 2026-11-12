@@ -160,8 +160,8 @@ PRD v0.3 §10.3「已定、还没做」分四批做，这是第 1 批「只读�
   比如 `ovenpals.app`），没有之前写 “iPhone app”。系统分享面板的预览名也是 Ovenpals。卡片高 446 → 456 pt。
 - **9:16 竖版**：Share 页圆点下面多了 Card / 9:16 两个小按钮。9:16 导出 1080 × 1920，卡片缩到 86 % 放在正中，
   避开快拍上下的按钮区。选了哪个会记住。达成自律周时自动弹出的那张仍是卡片。
-- **健康权限说明**：读取那条改成 “Ovenpals reads your steps, workouts, active energy, sleep and heart rate to show your day and grow
-  your pets. Data stays on your phone.”（不再提 “how rested you are”；HRV / 静息心率还在读，停不停读等用户定）；写入那条改成 Ovenpals。
+- **健康权限说明**：写入那条改成 “Ovenpals does not write to Apple Health.”。读取那条和首次打开的 Heart rate 一行先不动
+  （2026-11-12 用户定：HRV / 静息心率照读，文字不改）。
 - 服务器出错时的提示里的 HealthPet 也换成 Ovenpals。
 
 ## 首页的数据
