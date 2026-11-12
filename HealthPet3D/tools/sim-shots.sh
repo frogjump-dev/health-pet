@@ -1,7 +1,7 @@
 #!/bin/bash
 # Screenshots of Ovenpals (the HealthPet3D target) on the iPhone 18 Pro simulator, without opening Simulator.app.
 # Usage: HealthPet3D/tools/sim-shots.sh <simulator udid> <output folder> [all|extra]
-#   extra = only parts 4 and 5 (first-open steps, share cards, page ends, Toast's page, the tour,
+#   extra = only parts 4 to 6 (first-open steps, share cards, page ends, Toast's page, the tour,
 #           the tap-to-explain notes)
 # Needs a Debug build in build/dd (see HealthPet3D/README.md). Shuts the simulator down at the end.
 # Each launch writes its own console-<name>.log; lines starting with [pet] say how long the
@@ -190,6 +190,22 @@ xcrun simctl ui "$UDID" appearance dark
 launch tour-dark -hp3dTour 1 -3d.appearance dark
 pet_ready tour-dark
 sleep 7;   shot 15-tour-1-dark
+
+# 6. PRD v0.3, light: the 12-hour clock (home and Today), the pet's bedtime question, 「Watch got it
+# wrong?」, the 9:16 story on the Share page, and Settings → Look with the time format
+xcrun simctl ui "$UDID" appearance light
+launch clock12-home -3d.timeFormat 12 -3d.appearance light
+pet_ready clock12-home
+sleep 4;   shot 16-home-12h
+launch clock12-today -hp3dRoute today -3d.timeFormat 12 -3d.appearance light
+sleep 1.5; shot 17-today-12h
+launch ask-bedtime -hp3dAskBedtime YES -3d.appearance light
+pet_ready ask-bedtime
+sleep 6;   shot 18-home-bedtime-question
+launch fix-sheet -hp3dRoute today -hp3dFixSheet YES -3d.appearance light
+sleep 3;   shot 19-today-fix-sheet
+launch story -hp3dRoute share -3d.share.story YES -3d.appearance light
+sleep 2;   shot 20-share-story
 
 xcrun simctl terminate "$UDID" "$BUNDLE" >/dev/null 2>&1
 wait   # the last launch's console
