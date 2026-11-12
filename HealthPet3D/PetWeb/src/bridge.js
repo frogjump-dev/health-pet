@@ -15,10 +15,13 @@ const post = (msg) => { try { window.webkit?.messageHandlers?.pet?.postMessage(m
 const stage = document.getElementById('stage');
 window.addEventListener('error', (e) => post({ type: 'error', message: `${e.message} @${e.lineno}:${e.colno}` }));
 window.addEventListener('unhandledrejection', (e) => post({ type: 'error', message: String(e.reason) }));
-const cfg = { pet: 'toast', rug: false, shadow: true, dark: false, canvas: null, bedtime: false, mood: 'normal', energy: 'normal', calm: false, interactive: true, still: null,
+// decor: the decoration ids the pet wears (decor.js, PRD §5.4), at most one per slot.
+const cfg = { pet: 'toast', rug: false, shadow: true, dark: false, canvas: null, bedtime: false, mood: 'normal', energy: 'normal', calm: false, interactive: true, still: null, decor: [],
   // where the pet's 100 × 100 box sits in the page, as fractions of the page width / height
   box: { x: 0.19, y: 0.245, size: 0.62 } };
-let pet = null, dir = null, raf = 0, last = 0, paused = false, gulp = -1, gulpAmp = 1;
+let pet = null, dir = null, decor = null, raf = 0, last = 0, paused = false, gulp = -1, gulpAmp = 1;
+// seconds the decorations have been moving (rain, the pinwheel, jet flames); it stands still under Reduce Motion
+let clock = 0;
 
 function applyTheme() {
   Object.assign(PAL, cfg.dark ? NIGHT : DAY);
@@ -62,11 +65,14 @@ function mount() {
   placeStage();
   applyEnergy();
   const p = PETS[cfg.pet] || PETS.toast;
+  decor?.destroy();
   pet = mountPet(stage, p, { rug: cfg.rug, shadow: cfg.shadow });
+  decor = mountDecor(pet, { items: [] });
+  decor.set(cfg.decor || []);
   dir = createDirector(pet.anchors, { timing: cfg.bedtime ? BEDTIME : AWAKE, seed: 5 });
   if (cfg.mood !== 'normal') dir.setMood(cfg.mood);
   if (cfg.still) drawStill(cfg.still);
-  else pet.frame(dir.update(0));
+  else { const st = dir.update(0); pet.frame(st); decor.frame(st, clock, 0); }
   const a = pet.anchors;
   stage.style.transformOrigin = `${a.cx}% ${a.bottom}%`;
   post({ type: 'ready', pet: p.def.id, anchors: { cx: a.cx, top: a.top, bottom: a.bottom, ey: a.ey, w: a.w, h: a.h } });
@@ -80,12 +86,15 @@ function drawStill(kind) {
   if (kind === 'proud') {
     // 骄傲挺胸 at its key pose: the main pet on share cards
     const e = EXPR_BY_ID.proud;
-    pet.frame(e.f(e.key, pet.anchors));
+    const st = e.f(e.key, pet.anchors);
+    pet.frame(st);
+    decor.frame(st, 0, 0);
     return;
   }
   const s = base();
   if (kind === 'happy') s.eyes = both({ k: 'happy' });
   pet.frame(s);
+  decor.frame(s, 0, 0);
 }
 
 // ---------- feeding (PRD v0.2 §4.3, B 轻泡): the eyes follow the crumbs, it chews, it swallows ----------
@@ -141,6 +150,9 @@ function tick(now) {
   // eyes and every expression's face still change.
   if (cfg.calm) st = { ...st, lift: 0, roll: 0, spin: 0, sx: 1, sy: 1, yaw: 0, pitch: 0, fx: [] };
   pet.frame(st);
+  // the decorations follow the same state; under Reduce Motion they hold still (no swing, no spin)
+  if (!cfg.calm) clock += dt;
+  decor.frame(st, clock, cfg.calm ? 0 : dt);
   if (gulp >= 0 && cfg.calm) gulp = -1;
   if (gulp >= 0) {
     // the pet swallows food: a quick squash on its feet (a smaller one for each chew)
@@ -188,16 +200,25 @@ stage.addEventListener('pointercancel', cancel);
 
 // ---------- the app's handle ----------
 window.Pet = {
-  /** Change any of cfg; a different pet or floor mounts the pet again. */
+  /** Change any of cfg; a different pet or floor mounts the pet again (a new outfit does not). */
   configure(o = {}) {
     const remount = !pet || (o.pet && o.pet !== cfg.pet) || (o.rug !== undefined && o.rug !== cfg.rug) || (o.still !== undefined && o.still !== cfg.still);
     const bedtime = o.bedtime !== undefined && o.bedtime !== cfg.bedtime;
     const mood = o.mood && o.mood !== cfg.mood;
     const energy = o.energy && o.energy !== cfg.energy;
+    const outfit = Array.isArray(o.decor) && o.decor.join(',') !== (cfg.decor || []).join(',');
     Object.assign(cfg, o);
     if (remount) { mount(); return; }
     applyTheme();
     placeStage();
+    if (outfit) {
+      decor.set(cfg.decor);
+      // a still picture is drawn once: draw it again with the new outfit, then tell the app it is on screen
+      if (cfg.still) {
+        drawStill(cfg.still);
+        requestAnimationFrame(() => requestAnimationFrame(() => post({ type: 'drawn', pet: cfg.pet })));
+      }
+    }
     if (energy) applyEnergy();
     if (bedtime) dir.setTiming(cfg.bedtime ? BEDTIME : AWAKE);
     if (mood) dir.setMood(cfg.mood);

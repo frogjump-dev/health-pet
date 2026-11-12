@@ -48,6 +48,9 @@ struct HomeScreen: View {
     @State private var selectedDay: Date?
     @State private var tour: TourStep?
     @State private var tourTask: Task<Void, Never>?
+    /// The welcome gift after the tour (PRD v0.3 §5.4: the party hat, free).
+    @State private var gift: GiftReveal?
+    @State private var giftTask: Task<Void, Never>?
 
     private enum Note: Hashable { case asleep, second, week }
 
@@ -88,6 +91,13 @@ struct HomeScreen: View {
         .onPreferenceChange(HomeSpot.Key.self) { spots = $0 }
         .overlay { FeedLayer(feeds: feeds) }
         .overlay { tourOverlay }
+        .overlay {
+            if let gift {
+                GiftSheet(gift: gift, collected: model.dressUp.collected, pointsLeft: model.dressUp.points,
+                          wear: { putOn(gift) }, later: { withAnimation(.easeOut(duration: 0.25)) { self.gift = nil } })
+            }
+        }
+        .animation(.easeOut(duration: 0.25), value: gift)
         .background(Jade.canvas.ignoresSafeArea())
         .toolbar(.hidden, for: .navigationBar)
         .sensoryFeedback(.impact(weight: .light), trigger: bites)
@@ -110,6 +120,8 @@ struct HomeScreen: View {
         .onChange(of: stage.isReady) { greet() }
         .onChange(of: model.today) { greet() }
         .onChange(of: home.onboarded) { greet() }
+        // the tour is over (or skipped): the welcome gift comes next
+        .onChange(of: tour) { _, step in if step == nil { greet() } }
         .onChange(of: stage.tapCount) {
             guard onScreen else { return }
             say(stage.lastTapMode == "awake" ? model.petLine(energy: energy) : "Mm… so sleepy.")
@@ -207,8 +219,9 @@ struct HomeScreen: View {
 
     private func stageConfig(pet: Pet3D, box: PetStageConfig.Box) -> PetStageConfig {
         // No daily mood any more (PRD v0.3): how the pet idles follows only its energy.
+        // each pet keeps its own outfit; switching the main pet switches what home shows (PRD v0.3 §5.4)
         PetStageConfig(pet: pet.id, rug: true, dark: scheme == .dark, bedtime: model.isPetAsleep,
-                       energy: energy.rawValue, box: box)
+                       energy: energy.rawValue, decor: model.dressUp.outfit(for: pet.id), box: box)
     }
 
     private func bubbleColor(_ kind: FoodBubble.Kind) -> Color {
@@ -508,7 +521,12 @@ struct HomeScreen: View {
             }
             return
         }
-        guard !model.isPetAsleep else { return }
+        // the party hat after the tour, once; also for those who did the tour before Dress up existed
+        let giftDue = !model.dressUp.welcomeGiven && tour == nil
+        guard !model.isPetAsleep else {
+            if giftDue { offerWelcomeGift(after: 0.8) }
+            return
+        }
 
         var moments: [Moment] = []
         var start = 0.0
@@ -563,7 +581,10 @@ struct HomeScreen: View {
             moments.append(Moment(expression: nil, line: "Nothing to eat yet. A walk or a workout grows a snack here."))
         }
 
-        guard !moments.isEmpty else { return }
+        guard !moments.isEmpty else {
+            if giftDue { offerWelcomeGift(after: start + 0.8) }
+            return
+        }
         // queued in the page: each plays to the end, in order, after 醒来
         moments.compactMap(\.expression).forEach { stage.celebrate($0) }
         momentsTask?.cancel()
@@ -576,7 +597,30 @@ struct HomeScreen: View {
             }
             // the card slides up once the celebration is over
             if weekDone, !Task.isCancelled, onScreen { weekCard = true }
+            else if giftDue, !Task.isCancelled { offerWelcomeGift(after: 0.2) }
         }
+    }
+
+    /// The welcome gift (D11, D12): a box to tap open, then the party hat and 「Put it on 〈pet〉」.
+    /// Only on a quiet home: no tour, meal, question or card in the way (otherwise next time).
+    private func offerWelcomeGift(after delay: Double) {
+        guard !model.dressUp.welcomeGiven, giftTask == nil else { return }
+        giftTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(delay))
+            giftTask = nil
+            guard !Task.isCancelled, onScreen, scenePhase == .active, home.tourDone, tour == nil, inFlight == 0,
+                  !weekCard, !askingBedtime, gift == nil, let id = model.dressUp.giveWelcome() else { return }
+            gift = GiftReveal(item: id, welcome: true, petName: model.mainPet3D.name)
+        }
+    }
+
+    /// 「Put it on Toast」: the main pet wears it, and its page shows it on (D13).
+    private func putOn(_ gift: GiftReveal) {
+        let pet = model.mainPet3D
+        model.dressUp.wear(gift.item, on: pet.id)
+        model.dressUp.justWorn = (pet.id, gift.item)
+        self.gift = nil
+        router.path = [.pets, .pet(pet.id)]
     }
 
     /// 醒来: the bubbles wait for the pet to wake up, then grow one by one.
@@ -608,7 +652,8 @@ struct HomeScreen: View {
                 DockItem(name: "Pets") {
                     RoundSurface(size: 50) { PetFaceIcon(size: 24) }
                         .overlay(alignment: .topTrailing) {
-                            if home.hasUnseen(model.unlockedPets) {
+                            // a new pet, or enough points for a draw (PRD v0.3 §5.4)
+                            if home.hasUnseen(model.unlockedPets) || model.dressUp.canDraw {
                                 Circle().fill(Jade.accent).frame(width: 7, height: 7).offset(x: 2, y: -2)
                             }
                         }
