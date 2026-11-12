@@ -29,16 +29,17 @@ settle() {
 
 # A Debug launch spends 2-3 seconds loading frameworks before its first frame. The launch screen is
 # one flat colour, so its PNG stays far under any real page's size. The launch transition can look
-# like a page for its first second, so only look after that.
+# like a page for its first second, so only look after that. Fails when no page came at all.
 first_frame() {
-  local tries
+  local tries drawn=1
   sleep 1.5
   for tries in {1..60}; do
     xcrun simctl io "$UDID" screenshot --type=png "$OUT/.probe.png" >/dev/null 2>&1
-    (( $(stat -f%z "$OUT/.probe.png" 2>/dev/null || echo 0) > 100000 )) && break
+    (( $(stat -f%z "$OUT/.probe.png" 2>/dev/null || echo 0) > 100000 )) && { drawn=0; break; }
     sleep 0.5
   done
   rm -f "$OUT/.probe.png"
+  return $drawn
 }
 
 # pet_ready <log name>: wait for the living pet, up to 2 minutes (the first WebKit start after an
@@ -82,7 +83,9 @@ xcrun simctl install "$UDID" "$APP_PATH"
 if [[ "$ONLY" == all ]]; then
 # 0. The first open (fresh install): hello (its other steps are in part 4)
 xcrun simctl ui "$UDID" appearance light
-launch first-open -3d.onboarded NO
+# the first launch after an install sometimes never starts (11-12: blank after 30 s, the next one
+# drew in 4 s): launch it again then
+launch first-open -3d.onboarded NO || { echo "first launch stuck, launching again"; launch first-open -3d.onboarded NO; }
 sleep 1;   shot 00-first-open
 
 # 1. Home, light: wake-up, the morning reveal, then every food bubble eaten (-hp3dFeed starts
