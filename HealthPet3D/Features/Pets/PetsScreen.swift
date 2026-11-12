@@ -26,7 +26,8 @@ struct PetsScreen: View {
             LazyVGrid(columns: columns, spacing: 10) {
                 ForEach(unlocked, id: \.pet.id) { record in
                     NavigationLink(value: Route.pet(record.pet.id)) {
-                        PetTile(record: record)
+                        PetTile(record: record, decor: model.dressUp.outfit(for: record.pet.id),
+                                wearing: model.dressUp.wearing(record.pet))
                     }
                     .buttonStyle(.plain)
                 }
@@ -132,10 +133,14 @@ struct LockedPetsScreen: View {
 
 struct PetTile: View {
     let record: PetRecord
+    /// What it wears (PRD v0.3 §5.4): a dressed pet shows its photographed picture.
+    var decor: [String] = []
+    /// "Cowboy hat and Bandana" for VoiceOver (nil = nothing on).
+    var wearing: String? = nil
 
     var body: some View {
         VStack(spacing: 6) {
-            PetPicture(pet: record.pet, locked: !record.isUnlocked)
+            PetPicture(pet: record.pet, locked: !record.isUnlocked, decor: record.isUnlocked ? decor : [])
                 .frame(height: 62)
             Text(record.isUnlocked ? record.pet.name : " ")
                 .font(.rounded(12, .semibold))
@@ -162,7 +167,9 @@ struct PetTile: View {
         }
         .contentShape(RoundedRectangle(cornerRadius: Metrics.tile, style: .continuous))
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(record.isUnlocked ? "\(record.pet.name), level \(record.level)" : "Locked pet")
+        .accessibilityLabel(record.isUnlocked
+            ? "\(record.pet.name), level \(record.level)" + (wearing.map { ", wearing \($0)" } ?? "")
+            : "Locked pet")
     }
 }
 

@@ -1,8 +1,8 @@
 #!/bin/bash
 # Screenshots of Ovenpals (the HealthPet3D target) on the iPhone 18 Pro simulator, without opening Simulator.app.
 # Usage: HealthPet3D/tools/sim-shots.sh <simulator udid> <output folder> [all|extra]
-#   extra = only parts 4 to 6 (first-open steps, share cards, page ends, Toast's page, the tour,
-#           the tap-to-explain notes)
+#   extra = only parts 4 to 7 (first-open steps, share cards, page ends, Toast's page, the tour,
+#           the tap-to-explain notes, PRD v0.3, Dress up)
 # Needs a Debug build in build/dd (see HealthPet3D/README.md). Shuts the simulator down at the end.
 # Each launch writes its own console-<name>.log; lines starting with [pet] say how long the
 # living pet took to load (ready / drawn) and show any page error.
@@ -57,6 +57,9 @@ now() { perl -MTime::HiRes=time -e 'printf "%.2f", time'; }
 
 # launch <log name> [app arguments...]   (the first open and the home tour are skipped unless
 # -3d.onboarded NO / -3d.tourDone NO is passed: a later argument wins over an earlier one)
+# Every launch starts from the same wardrobe (-hp3dDressUp ready: 7 points, 23 items, the Dress up
+# design's outfits), written to iCloud too: the simulator keeps its iCloud values across installs,
+# and a fresh wardrobe would put the welcome gift on every home shot. Part 7 passes others.
 # Returns once the first frame is on screen, so the sleeps below count from there.
 launch() {
   local name="$1"; shift
@@ -65,7 +68,7 @@ launch() {
   # waits out its minute on every launch and the timed shots miss) and fail outright under ~/Desktop.
   # It ends by itself when the app does.
   xcrun simctl launch --console-pty --terminate-running-process "$UDID" "$BUNDLE" \
-    -3d.onboarded YES -3d.tourDone YES "$@" </dev/null >"$OUT/console-$name.log" 2>&1 &
+    -3d.onboarded YES -3d.tourDone YES -hp3dDressUp ready "$@" </dev/null >"$OUT/console-$name.log" 2>&1 &
   first_frame
 }
 
@@ -206,6 +209,56 @@ launch fix-sheet -hp3dRoute today -hp3dFixSheet YES -3d.appearance light
 sleep 3;   shot 19-today-fix-sheet
 launch story -hp3dRoute share -3d.share.story YES -3d.appearance light
 sleep 2;   shot 20-share-story
+
+# 7. Dress up (PRD v0.3 §5.4, design v1 D03–D13): the page, a locked item's note, how points work,
+# short of points, the gift card (box, open, the last item), all collected, then the dressed pets on
+# Pets (with the Draw row), Toast's page and the share cards, and the welcome gift on home after the
+# tour. Pets tiles and share cards take their dressed pictures from a hidden second web view the
+# first time: the sleeps there are longer.
+xcrun simctl ui "$UDID" appearance light
+launch dress -hp3dRoute dress:toast -3d.appearance light
+pet_ready dress
+sleep 4;   shot 21-dressup
+launch dress-locked -hp3dRoute dress:toast -hp3dDressSlot eyes -hp3dDressNote locked -3d.appearance light
+pet_ready dress-locked
+sleep 3;   shot 22-dressup-eyes-locked
+launch dress-points -hp3dRoute dress:toast -hp3dDressNote points -3d.appearance light
+pet_ready dress-points
+sleep 3;   shot 23-dressup-points-note
+launch dress-short -hp3dRoute dress:toast -hp3dDressUp short -3d.appearance light
+pet_ready dress-short
+sleep 3;   shot 24-dressup-short
+launch gift-box -hp3dRoute dress:toast -hp3dDressGift YES -3d.appearance light
+pet_ready gift-box
+sleep 3;   shot 25-gift-box
+launch gift-open -hp3dRoute dress:toast -hp3dDressGift YES -hp3dGiftOpen YES -3d.appearance light
+pet_ready gift-open
+sleep 5;   shot 26-gift-open
+launch gift-last -hp3dRoute dress:toast -hp3dDressUp last -hp3dDressGift YES -hp3dGiftOpen YES -3d.appearance light
+pet_ready gift-last
+sleep 5;   shot 27-gift-last
+launch dress-all -hp3dRoute dress:toast -hp3dDressUp all -hp3dDressSlot back -3d.appearance light
+pet_ready dress-all
+sleep 3;   shot 28-dressup-all
+launch dressed-pets -hp3dRoute pets -3d.appearance light
+sleep 12;  shot 29-pets-dressed
+launch dressed-toast -hp3dRoute pet:toast -3d.appearance light
+pet_ready dressed-toast
+sleep 4;   shot 30-pet-toast-dressed
+for card in week pets; do
+  launch "dressed-share-$card" -hp3dRoute share -hp3dShareCard "$card" -3d.appearance light
+  sleep 12; shot "31-share-$card-dressed"
+done
+launch home-gift -hp3dDressUp gift -3d.appearance light
+pet_ready home-gift
+sleep 8;   shot 32-home-welcome-gift
+xcrun simctl ui "$UDID" appearance dark
+launch dress-dark -hp3dRoute dress:toast -3d.appearance dark
+pet_ready dress-dark
+sleep 4;   shot 33-dressup-dark
+launch gift-open-dark -hp3dRoute dress:toast -hp3dDressGift YES -hp3dGiftOpen YES -3d.appearance dark
+pet_ready gift-open-dark
+sleep 5;   shot 34-gift-open-dark
 
 xcrun simctl terminate "$UDID" "$BUNDLE" >/dev/null 2>&1
 wait   # the last launch's console

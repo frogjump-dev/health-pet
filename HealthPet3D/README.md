@@ -60,6 +60,7 @@ HealthPet3D/
 
 - 一个离线网页：open-bot-avatar 0.1.2（MIT）+ 3D方案 表情引擎 engine.js + 活宠物导演 live.js（和预览页同一份代码，没有改）+ `PetWeb/src/bridge.js`（App 和宠物之间的接口）。
 - 只有首页、宠物详情和 Dress up 的宠物是活的（同一个网页，在页面之间传递）；Pets 格子和分享卡用静态图（由同一个 3D 宠物渲染）。
+  穿了装扮的宠物在 Pets 格子和分享卡上用 App 现拍的图（`Pet/PetSnapper.swift`，见下面 Dress up 一节）。
   网页启动要一点时间，这期间同一位置先显示静态图，宠物画出来后淡掉；iOS 在后台回收了网页进程时会自动重新加载。
 - 改了 `PetWeb/src/` 以后：`cd HealthPet3D/PetWeb && npm install && npm run build`，会重新生成 `Resources/PetWeb/pet.html`。
   重新渲染静态图和图标：`node tools/stills.js ../Resources/PetWeb/pet.html <输出目录>`（需要 Playwright）。
@@ -201,9 +202,20 @@ PRD v0.3 §10.3「已定、还没做」分四批做，这是第 1 批「只读�
   `Features/DressUp/`（衣柜、积分说明、礼物卡）。读屏、大字号（3 列、舞台 200 pt、整页可滚）、减弱动态效果按交接说明 §6 做了。
 - **装饰小图** `Resources/Assets.xcassets/decor_<id>`：和设计稿 `app-icons/` 同样的构图，按 8 倍重新渲染，
   礼物卡上 132 pt 的大图也清楚（@3x 396 px）。5 件平面图标（翅膀、仙子翅膀、喷气背包、杠铃、铃铛项圈）同设计稿。
+- **Pets 格子和分享卡上的装扮**（`Pet/PetSnapper.swift`）：静态图里没有装扮，所以穿了装扮的宠物由 App 现拍：
+  另开一个看不见的网页（360 pt，完全不透明，放在窗口最底层、被 App 自己的页面盖住；iOS 拍网页时带上它自己的透明度，所以不能把它本身调透明），按「宠物 + 装扮 + 姿势（平常 / 开心 / 骄傲）」各画一次，
+  黑底拍一张、白底拍一张，两张对比算出透明背景，存进 `Caches/PetStills/`。拍好前先显示没装扮的静态图，拍好后换上；
+  同一只宠物换了装扮，旧图删掉。离开 Dress up 时先把这只的三个姿势拍好；分享卡等图拍好了再出图。网页 20 秒没活就关掉。
+  **要在真机上确认**：iOS 对被盖住的 WKWebView 不保证会画，模拟器上能拍到不代表真机也能。
+  真机上看 Pets 页和分享卡：穿了装扮的宠物应该在一两秒内换成穿着的样子；如果一直是没装扮的样子，
+  Xcode 控制台会有 `[pet] snapper: no picture of …` 或 `… came out empty`（拍好的是 `[pet] snapper: took …`），日志括号里有两张图的平均亮度和实心占比，可以看出是没画出来（几乎没有实心）还是黑白底没换成（全是实心）。
+- **主页的对话气泡**躲开装扮：网页换装后两帧量出装扮的最高点（`outfit` 消息，和 anchors 同一个 0–100 的框），
+  主页的台词、睡觉提问和入账小标签都放在宠物和装扮里更高的那个上面。
 - **模拟器截图用的启动参数**（只在 Debug）：`-hp3dDressUp ready|short|last|all|gift`（预置装扮数据：7 分 23 件 / 3 分 /
   只差一件 / 全齐 / 刚走完导览的新用户）、`-hp3dRoute dress:toast`、`-hp3dDressSlot eyes`、`-hp3dDressNote points|locked`、
   `-hp3dDressGift YES`（抽一次，弹礼物盒）、`-hp3dGiftOpen YES`（礼物盒自己打开）。
+  预置数据也写进 iCloud 键值存储：模拟器的 iCloud 值卸载重装也还在，不写的话启动时一合并又回到上次的衣柜。
+  `tools/sim-shots.sh` 每次启动都带 `-hp3dDressUp ready`（不然新装的 App 每张主页截图都会弹欢迎礼物），第 7 组是 Dress up。
 
 ## 首页的数据
 
@@ -214,6 +226,6 @@ PRD v0.3 §10.3「已定、还没做」分四批做，这是第 1 批「只读�
 
 ## 还没做
 
-- Pets 格子和分享卡上穿着装扮的宠物（现截图，第二个 Dress up PR）。
+- 真机上确认 Pets 格子和分享卡的装扮图拍得出来（见 Dress up 一节）。
 - 8 个新表情（PRD §10.3 第 17 条）：装饰引擎吃的是同一个 `st`，换引擎后在 20 只宠物上各播一遍看装饰跟不跟得上。
 - 分享卡的 Milestone 卡、数据详情页。

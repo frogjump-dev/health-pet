@@ -91,12 +91,18 @@ extension AppModel {
     }
 }
 
-/// A pet's still picture; locked pets show only their silhouette.
+/// A pet's still picture; locked pets show only their silhouette. A pet that wears decorations
+/// (PRD v0.3 §5.4) shows its photographed picture once `PetSnapper` has one, the bundled still
+/// until then.
 struct PetPicture: View {
     let pet: Pet3D
     var locked = false
     var happy = false
     var proud = false
+    /// What the pet wears ([] = the bundled still).
+    var decor: [String] = []
+
+    private var pose: PetSnapper.Pose { proud ? .proud : happy ? .happy : .neutral }
 
     var body: some View {
         if locked {
@@ -107,11 +113,18 @@ struct PetPicture: View {
                 .foregroundStyle(Jade.fill)
                 .accessibilityLabel("Locked pet")
         } else {
+            let key = PetSnapper.Key(pet: pet.id, decor: decor, pose: pose)
+            let dressed = decor.isEmpty ? nil : PetSnapper.shared.image(for: key)
             Image(proud ? pet.proudStill : happy ? pet.happyStill : pet.still)
                 .resizable()
                 .interpolation(.high)
                 .scaledToFit()
+                .opacity(dressed == nil ? 1 : 0)
+                .overlay { if let dressed { DressedPicture(image: dressed) } }
                 .accessibilityLabel(pet.name)
+                .task(id: key) {
+                    if !decor.isEmpty { await PetSnapper.shared.picture(for: key) }
+                }
         }
     }
 }

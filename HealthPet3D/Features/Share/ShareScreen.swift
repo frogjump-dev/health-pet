@@ -72,6 +72,10 @@ struct ShareScreen: View {
         .toolbar(.hidden, for: .navigationBar)
         .task(id: "\(page.rawValue)-\(showNumbers)-\(showBedtimes)-\(story)-\(scheme == .dark)") {
             let card = ShareCard(kind: page, facts: facts)
+            // dressed pets go on the picture in what they wear (PRD v0.3 §5.4): their pictures first
+            image = nil
+            await PetSnapper.shared.prepare(card.pictures)
+            guard !Task.isCancelled else { return }
             image = story ? StoryPicture.render(card, scheme: scheme) : ShareCard.render(card, scheme: scheme)
         }
     }
@@ -110,7 +114,10 @@ struct WeekAchievedSheet: View {
         .presentationDragIndicator(.visible)
         .presentationCornerRadius(32)
         .task(id: scheme == .dark) {
-            image = ShareCard.render(ShareCard(kind: .week, facts: facts), scheme: scheme)
+            let card = ShareCard(kind: .week, facts: facts)
+            await PetSnapper.shared.prepare(card.pictures)
+            guard !Task.isCancelled else { return }
+            image = ShareCard.render(card, scheme: scheme)
         }
     }
 }
@@ -200,12 +207,15 @@ struct ShareCard: View {
             todaySteps = model.today?.steps
             weeks = model.disciplinedWeekTotal
             let trio = model.showOffPets
-            left = trio.left.map(SharePet.init)
-            main = SharePet(trio.main)
-            right = trio.right.map(SharePet.init)
+            // each pet in what it wears (PRD v0.3 §5.4)
+            let dressUp = model.dressUp
+            let share = { (record: PetRecord) in SharePet(record, decor: dressUp.outfit(for: record.pet.id)) }
+            left = trio.left.map(share)
+            main = share(trio.main)
+            right = trio.right.map(share)
             let records = model.petRecords
             let unlocked = records.filter(\.isUnlocked)
-            pets = ([trio.main] + unlocked.filter { $0.pet.id != trio.main.pet.id }).map(SharePet.init)
+            pets = ([trio.main] + unlocked.filter { $0.pet.id != trio.main.pet.id }).map(share)
             petsAvailable = records.count
             mainProud = (home.energyOverride ?? model.energy) != .low
             let name = home.userName.trimmingCharacters(in: .whitespaces)
@@ -332,19 +342,36 @@ struct ShareCard: View {
         }
     }
 
+    /// The dressed pets' pictures this card shows, to be taken before it is rendered.
+    var pictures: [PetSnapper.Key] {
+        switch kind {
+        case .week, .today:
+            let mainPose: PetSnapper.Pose = facts.mainProud ? .proud : .happy
+            return [facts.left.map { PetSnapper.Key(pet: $0.pet.id, decor: $0.decor, pose: .neutral) },
+                    PetSnapper.Key(pet: facts.main.pet.id, decor: facts.main.decor, pose: mainPose),
+                    facts.right.map { PetSnapper.Key(pet: $0.pet.id, decor: $0.decor, pose: .neutral) }]
+                .compactMap { $0 }.filter { !$0.decor.isEmpty }
+        case .pets:
+            return facts.pets.prefix(5).map { item in
+                PetSnapper.Key(pet: item.pet.id, decor: item.decor, pose: item.id == facts.main.id ? .happy : .neutral)
+            }
+            .filter { !$0.decor.isEmpty }
+        }
+    }
+
     @ViewBuilder
     private func trio(w: CGFloat, h: CGFloat) -> some View {
         if let left = facts.left {
-            PetPicture(pet: left.pet).frame(width: 86, height: 86)
+            PetPicture(pet: left.pet, decor: left.decor).frame(width: 86, height: 86)
                 .position(x: w * 0.17, y: h - 26 - 43)
             LevelChip(level: left.level).position(x: w * 0.17, y: h - 10)
         }
         if let right = facts.right {
-            PetPicture(pet: right.pet).frame(width: 84, height: 84)
+            PetPicture(pet: right.pet, decor: right.decor).frame(width: 84, height: 84)
                 .position(x: w * 0.83, y: h - 26 - 42)
             LevelChip(level: right.level).position(x: w * 0.83, y: h - 10)
         }
-        PetPicture(pet: facts.main.pet, happy: !facts.mainProud, proud: facts.mainProud)
+        PetPicture(pet: facts.main.pet, happy: !facts.mainProud, proud: facts.mainProud, decor: facts.main.decor)
             .frame(width: 130, height: 130)
             .position(x: w / 2, y: h - 22 - 65)
         LevelChip(level: facts.main.level).position(x: w / 2, y: h - 10)
@@ -358,7 +385,7 @@ struct ShareCard: View {
             let main = item.id == facts.main.id
             let side: CGFloat = main ? 92 : 66
             let x = step * (CGFloat(i) + 0.5)
-            PetPicture(pet: item.pet, happy: main)
+            PetPicture(pet: item.pet, happy: main, decor: item.decor)
                 .frame(width: side, height: side)
                 .position(x: x, y: h - 26 - side / 2)
             LevelChip(level: item.level).position(x: x, y: h - 10)
@@ -493,11 +520,14 @@ private struct PictureSizePicker: View {
 struct SharePet: Identifiable {
     let pet: Pet3D
     let level: Int
+    /// What it wears (PRD v0.3 §5.4).
+    let decor: [String]
     var id: String { pet.id }
 
-    init(_ record: PetRecord) {
+    init(_ record: PetRecord, decor: [String] = []) {
         pet = record.pet
         level = record.level
+        self.decor = decor
     }
 }
 
