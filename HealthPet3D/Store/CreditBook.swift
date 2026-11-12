@@ -35,8 +35,9 @@ final class CreditBook {
             since = saved
         } else {
             let today = Calendar.current.startOfDay(for: Date())
-            since = Calendar.current.date(byAdding: .day, value: -history, to: today) ?? today
-            defaults?.set(since, forKey: Keys.since)
+            let start = Calendar.current.date(byAdding: .day, value: -history, to: today) ?? today
+            since = start
+            defaults?.set(start, forKey: Keys.since)
         }
         let savedRecords = defaults?.data(forKey: Keys.records)
             .flatMap { try? JSONDecoder().decode([CreditRecord].self, from: $0) } ?? []

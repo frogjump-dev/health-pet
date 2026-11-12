@@ -49,8 +49,9 @@ final class PetStore {
         if let saved = defaults.object(forKey: Keys.adoptedOn) as? Date {
             adoptedOn = saved
         } else {
-            adoptedOn = Date()
-            defaults.set(adoptedOn, forKey: Keys.adoptedOn)
+            let now = Date()
+            adoptedOn = now
+            defaults.set(now, forKey: Keys.adoptedOn)
         }
         memories = Self.decode([MemoryEvent].self, defaults.data(forKey: Keys.memories)) ?? []
         cachedSnapshots = Self.decode([HealthSnapshot].self, defaults.data(forKey: Keys.snapshots)) ?? []
