@@ -46,6 +46,9 @@ targets:
         NSHealthShareUsageDescription: "Your pet reads your steps, workouts, active energy, sleep and heart rate variability to show your day and how rested you are. Data stays on your phone."
         NSHealthUpdateUsageDescription: "HealthPet does not write to Apple Health."
         NSPhotoLibraryAddUsageDescription: "Save your share cards to Photos."
+        # Settings → About opens these once they exist (https:// or mailto:); empty = "Soon".
+        PrivacyPolicyURL: ""
+        FeedbackURL: ""
         SupabaseProjectRef: $(SUPABASE_PROJECT_REF)
         SupabaseAnonKey: $(SUPABASE_ANON_KEY)
     entitlements:

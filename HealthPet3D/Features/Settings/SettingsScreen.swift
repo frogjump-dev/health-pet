@@ -2,8 +2,9 @@ import SwiftUI
 import PetCore
 
 /// Settings, from home's 「…」: data sources, sleep targets (half-hour steps, weekends apart), the
-/// two notifications, appearance, name on share cards, and a few switches for trying the test build
-/// (demo data, the pet's energy, replay the wake-up or the first open, regrow food).
+/// two notifications, appearance, the clock style, name on share cards, About (version, privacy
+/// policy, feedback), and a few switches for trying the test build (demo data, the pet's energy,
+/// replay the wake-up or the first open, regrow food).
 /// Built from the v3 cards rather than a Form, so it scrolls like every other page.
 struct SettingsScreen: View {
     @Environment(AppModel.self) private var model
@@ -76,11 +77,21 @@ struct SettingsScreen: View {
                     .labelsHidden()
                 }
                 RowDivider()
+                SettingsRow("Time format") { TimeFormatMenu() }
+                RowDivider()
                 TextField("Name on share cards", text: $home.userName)
                     .textInputAutocapitalization(.words)
-                    .font(.rounded(16, .medium))
+                    .scaledFont(16, .medium)
                     .foregroundStyle(Jade.ink)
                     .frame(minHeight: 54)
+            }
+
+            SettingsGroup("About") {
+                SettingsRow("Version") { SettingsValue(Bundle.main.versionText) }
+                RowDivider()
+                LinkRow("Privacy policy", url: Bundle.main.url(forInfoKey: "PrivacyPolicyURL"))
+                RowDivider()
+                LinkRow("Send feedback", url: Bundle.main.url(forInfoKey: "FeedbackURL"))
             }
 
             SettingsGroup("Test build") {
@@ -115,7 +126,7 @@ struct SettingsScreen: View {
 
             if let error = model.errorMessage {
                 Text(error)
-                    .font(.rounded(14, .medium))
+                    .scaledFont(14, .medium)
                     .foregroundStyle(Jade.ink2)
                     .card()
                     .padding(.top, 10)
@@ -188,8 +199,8 @@ private struct SettingsGroup<Content: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(title)
-                .font(.rounded(13, .semibold))
-                .foregroundStyle(Jade.ink3)
+                .scaledFont(13, .semibold)
+                .foregroundStyle(Jade.ink2)
                 .padding(.leading, 18)
                 .accessibilityAddTraits(.isHeader)
             VStack(spacing: 0) { content() }
@@ -225,7 +236,67 @@ private struct SettingsLabel: View {
     init(_ text: String) { self.text = text }
 
     var body: some View {
-        Text(text).font(.rounded(16, .medium)).foregroundStyle(Jade.ink)
+        Text(text).scaledFont(16, .medium).foregroundStyle(Jade.ink)
+    }
+}
+
+/// 24-hour or 12-hour (PRD v0.3 §6): each choice shows an example, the row shows the choice.
+private struct TimeFormatMenu: View {
+    private let clock = ClockStyle.shared
+
+    var body: some View {
+        Menu {
+            choice("24-hour", example: "22:48", twelveHour: false)
+            choice("12-hour", example: "10:48 PM", twelveHour: true)
+        } label: {
+            HStack(spacing: 5) {
+                Text(clock.twelveHour ? "12-hour" : "24-hour")
+                Image(systemName: "chevron.up.chevron.down").font(.system(size: 12, weight: .semibold))
+            }
+            .scaledFont(16, .medium)
+            .foregroundStyle(Jade.accent)
+        }
+        .accessibilityLabel("Time format, \(clock.twelveHour ? "12-hour" : "24-hour")")
+    }
+
+    private func choice(_ title: String, example: String, twelveHour: Bool) -> some View {
+        Button { clock.twelveHour = twelveHour } label: {
+            if clock.twelveHour == twelveHour {
+                Label { Text(title); Text(example) } icon: { Image(systemName: "checkmark") }
+            } else {
+                Text(title)
+                Text(example)
+            }
+        }
+    }
+}
+
+/// A row that opens a web page or an email; until there is one, it says "Soon".
+private struct LinkRow: View {
+    let title: String
+    let url: URL?
+    @Environment(\.openURL) private var openURL
+
+    init(_ title: String, url: URL?) {
+        self.title = title
+        self.url = url
+    }
+
+    var body: some View {
+        if let url {
+            Button { openURL(url) } label: {
+                HStack {
+                    SettingsLabel(title)
+                    Spacer()
+                    Image(systemName: "arrow.up.right").font(.system(size: 13, weight: .semibold)).foregroundStyle(Jade.ink2)
+                }
+                .frame(minHeight: 54)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+        } else {
+            SettingsRow(title) { SettingsValue("Soon") }
+        }
     }
 }
 
@@ -236,7 +307,7 @@ private struct SettingsNote: View {
 
     var body: some View {
         Text(text)
-            .font(.rounded(13, .medium))
+            .scaledFont(13, .medium)
             .foregroundStyle(Jade.ink2)
             .lineSpacing(2)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -249,7 +320,7 @@ private struct SettingsValue: View {
     init(_ text: String) { self.text = text }
 
     var body: some View {
-        Text(text).font(.rounded(16, .medium)).foregroundStyle(Jade.ink2)
+        Text(text).scaledFont(16, .medium).foregroundStyle(Jade.ink2)
     }
 }
 
@@ -268,7 +339,7 @@ private struct SettingsButton: View {
     var body: some View {
         Button(action: action) {
             Text(title)
-                .font(.rounded(16, .medium))
+                .scaledFont(16, .medium)
                 .foregroundStyle(quiet ? Jade.ink2 : Jade.accent)
                 .frame(maxWidth: .infinity, minHeight: 54, alignment: .leading)
                 .contentShape(Rectangle())
@@ -288,5 +359,18 @@ extension Bundle {
     var displayName: String {
         object(forInfoDictionaryKey: "CFBundleDisplayName") as? String
             ?? object(forInfoDictionaryKey: "CFBundleName") as? String ?? "HealthPet"
+    }
+
+    /// "0.3.0 (1)": the version and the build.
+    var versionText: String {
+        let version = object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "–"
+        let build = object(forInfoDictionaryKey: "CFBundleVersion") as? String
+        return build.map { "\(version) (\($0))" } ?? version
+    }
+
+    /// A link set in Info.plist; nil while it is empty.
+    func url(forInfoKey key: String) -> URL? {
+        guard let text = object(forInfoDictionaryKey: key) as? String, !text.isEmpty else { return nil }
+        return URL(string: text)
     }
 }

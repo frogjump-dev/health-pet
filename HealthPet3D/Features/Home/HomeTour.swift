@@ -50,7 +50,7 @@ struct TourOverlay: View {
 
                 if let skipAt {
                     Button("Skip", action: skip)
-                        .font(.rounded(14, .bold))
+                        .scaledFont(14, .bold)
                         .foregroundStyle(Jade.ink)
                         .padding(.horizontal, 16)
                         .frame(height: 36)
@@ -67,21 +67,21 @@ struct TourOverlay: View {
     private func caption(width: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(petName.uppercased())
-                .font(.rounded(11, .heavy))
+                .scaledFont(11, .heavy)
                 .tracking(0.8)
                 .foregroundStyle(Jade.accent)
             Text(step.line(whoop: whoop))
-                .font(.rounded(15, .semibold))
+                .scaledFont(15, .semibold)
                 .foregroundStyle(Jade.ink)
                 .lineSpacing(2)
                 .fixedSize(horizontal: false, vertical: true)
             HStack {
                 Text("\(step.rawValue) / 3")
-                    .font(.rounded(12, .semibold))
-                    .foregroundStyle(Jade.ink3)
+                    .scaledFont(12, .semibold)
+                    .foregroundStyle(Jade.ink2)
                 Spacer()
                 Button(action: next) {
-                    Text("Next ›").font(.rounded(13, .bold)).foregroundStyle(Jade.ink)
+                    Text("Next ›").scaledFont(13, .bold).foregroundStyle(Jade.ink)
                 }
                 .buttonStyle(.plain)
             }
@@ -137,7 +137,7 @@ struct TryItHint: View {
             HStack(spacing: 0) {
                 if !labelOnLeft { Tail().fill(Jade.primary).frame(width: 12, height: 7).rotationEffect(.degrees(-90)).offset(x: 3) }
                 Text("Tap to feed \(petName)")
-                    .font(.rounded(13, .bold))
+                    .scaledFont(13, .bold)
                     .foregroundStyle(Jade.onAccent)
                     .padding(.horizontal, 12)
                     .frame(height: 30)

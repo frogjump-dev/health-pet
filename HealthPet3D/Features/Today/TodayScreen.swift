@@ -6,10 +6,12 @@ import PetCore
 /// with what is left; for Whoop users, Whoop's recovery with its bar and percentage (Apple Watch
 /// users have no such row: nothing is estimated, PRD v0.3). A tag says which tally a record went
 /// into (✓ Early night, ✓ Workout), grey until its bubble on home is eaten (点击 = 入账). Every card
-/// explains itself with a tap. Share sits top right; last night can be taken as the leave night.
+/// explains itself with a tap. Share sits top right; last night can be taken as the leave night,
+/// or fixed when the watch got it wrong (two a month, PRD v0.3 §4.2).
 struct TodayScreen: View {
     @Environment(AppModel.self) private var model
     @State private var note: Note?
+    @State private var fixing = false
 
     private enum Note: Hashable { case asleep, workout, steps, week, recovery }
 
@@ -21,7 +23,7 @@ struct TodayScreen: View {
                     .accessibilityLabel("Share")
             }
             Text(Date().formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()))
-                .font(.rounded(13, .semibold))
+                .scaledFont(13, .semibold)
                 .foregroundStyle(Jade.ink2)
                 .padding(.top, -10)
                 .padding(.bottom, 4)
@@ -73,13 +75,19 @@ struct TodayScreen: View {
                     Tally(text: "Early night", color: Jade.sleep, on: Jade.onSleep, booked: model.nightBooked)
                 }
             }
-            BigNumber(day?.sleepOnset.map(Format.time) ?? "–")
+            let onset = day?.sleepOnset.map(Format.timeParts)
+            BigNumber(onset?.clock ?? "–", period: onset?.period)
             Text(sleepLine)
-                .font(.rounded(13, .semibold))
+                .scaledFont(13, .semibold)
                 .foregroundStyle(Jade.ink2)
             leaveButton
+            fixLine
         }
         .card()
+        .sheet(isPresented: $fixing) {
+            SleepFixSheet(start: model.lastNightRecordedOnset ?? model.discipline.target(forNightEnding: Date()))
+                .environment(model)
+        }
     }
 
     /// "Target 23:00 · slept 7h 30m"
@@ -105,7 +113,7 @@ struct TodayScreen: View {
         if model.lastNightIsLeave {
             Button { model.setLeave(false, nightEnding: Date()) } label: {
                 Label("Leave night", systemImage: "checkmark")
-                    .font(.rounded(14, .bold))
+                    .scaledFont(14, .bold)
                     .foregroundStyle(Jade.onSleep)
                     .padding(.horizontal, 14)
                     .frame(height: 34)
@@ -117,7 +125,7 @@ struct TodayScreen: View {
         } else if model.canTakeLeaveLastNight {
             Button { model.setLeave(true, nightEnding: Date()) } label: {
                 Label("Use leave night", systemImage: "moon.zzz")
-                    .font(.rounded(14, .bold))
+                    .scaledFont(14, .bold)
                     .foregroundStyle(Jade.ink)
                     .padding(.horizontal, 14)
                     .frame(height: 34)
@@ -126,6 +134,38 @@ struct TodayScreen: View {
             .buttonStyle(.plain)
             .padding(.top, 2)
             .accessibilityHint("Counts last night as on time. One a week.")
+        }
+    }
+
+    /// 「手表记错了」: under a late (or empty) night, a quiet link to say when you really fell
+    /// asleep; once fixed, what the watch said and Undo. Not a ledger line.
+    @ViewBuilder
+    private var fixLine: some View {
+        if model.lastNightFix != nil {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Image(systemName: "pencil").font(.system(size: 11, weight: .bold))
+                Text(model.lastNightRecordedOnset.map { "Fixed by you · watch said \(Format.time($0))" } ?? "Added by you")
+                    .scaledFont(13, .semibold)
+                Spacer(minLength: 6)
+                Button("Undo") { model.fixLastNight(nil) }
+                    .scaledFont(13, .bold)
+                    .foregroundStyle(Jade.ink)
+                    .buttonStyle(.plain)
+                    .accessibilityHint("Goes back to what the watch said")
+            }
+            .foregroundStyle(Jade.ink2)
+            .padding(.top, 2)
+        } else if model.canFixLastNight {
+            Button { fixing = true } label: {
+                Text("Watch got it wrong?")
+                    .scaledFont(13, .semibold)
+                    .underline()
+                    .foregroundStyle(Jade.ink2)
+                    .frame(minHeight: 28)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint("Tell it when you really fell asleep. \(model.sleepFixesLeft) left this month.")
         }
     }
 
@@ -141,12 +181,12 @@ struct TodayScreen: View {
             HStack(alignment: .firstTextBaseline, spacing: 3) {
                 BigNumber(workout.map { "\(Int($0.minutes.rounded()))" } ?? "–", size: 34)
                 if workout != nil {
-                    Text("min").font(.rounded(15, .semibold)).foregroundStyle(Jade.ink3)
+                    Text("min").scaledFont(15, .semibold).foregroundStyle(Jade.ink2)
                 }
             }
             if let distance = workout.flatMap(Self.distanceLine) {
                 Text(distance)
-                    .font(.rounded(13, .semibold))
+                    .scaledFont(13, .semibold)
                     .foregroundStyle(Jade.ink2)
             }
             Spacer(minLength: 0)
@@ -175,8 +215,8 @@ struct TodayScreen: View {
             VStack(alignment: .leading, spacing: 6) {
                 Track(fraction: Double(steps) / Double(goal), color: Jade.ink)
                 Text("of \(Format.short(goal))")
-                    .font(.rounded(12, .semibold))
-                    .foregroundStyle(Jade.ink3)
+                    .scaledFont(12, .semibold)
+                    .foregroundStyle(Jade.ink2)
             }
             Spacer(minLength: 0)
         }
@@ -189,13 +229,13 @@ struct TodayScreen: View {
     private var weekCard: some View {
         let cells = model.weekCells
         return VStack(alignment: .leading, spacing: 12) {
-            Text("This week").font(.rounded(15, .semibold)).foregroundStyle(Jade.ink)
+            Text("This week").scaledFont(15, .semibold).foregroundStyle(Jade.ink)
             weekLine(icon: "figure.run", name: "Workouts", row: CellRow(cells: cells.workoutRow, color: Jade.accent, size: CGSize(width: 22, height: 8), gap: 6),
                      count: "\(min(cells.workoutCount, 3)) of 3")
             weekLine(icon: "moon", name: "Early nights", row: CellRow(cells: cells.nightRow, color: Jade.sleep, size: CGSize(width: 22, height: 8), gap: 6),
                      count: "\(min(cells.nightCount, 5)) of 5")
             Text(model.weekToGo)
-                .font(.rounded(14, .bold))
+                .scaledFont(14, .bold)
                 .foregroundStyle(Jade.ink)
                 .padding(.top, 6)
         }
@@ -206,13 +246,13 @@ struct TodayScreen: View {
 
     private func weekLine(icon: String, name: String, row: CellRow, count: String) -> some View {
         HStack(spacing: 8) {
-            Image(systemName: icon).font(.system(size: 12, weight: .semibold)).foregroundStyle(Jade.ink3).frame(width: 16)
-            Text(name).font(.rounded(13, .semibold)).foregroundStyle(Jade.ink2)
+            Image(systemName: icon).font(.system(size: 12, weight: .semibold)).foregroundStyle(Jade.ink2).frame(width: 16)
+            Text(name).scaledFont(13, .semibold).foregroundStyle(Jade.ink2)
             Spacer(minLength: 6)
             row
             Text(count)
-                .font(.rounded(13, .semibold))
-                .foregroundStyle(Jade.ink3)
+                .scaledFont(13, .semibold)
+                .foregroundStyle(Jade.ink2)
                 .monospacedDigit()
                 .frame(width: 40, alignment: .trailing)
         }
@@ -223,21 +263,83 @@ struct TodayScreen: View {
         let recovery = model.whoopRecovery
         return HStack(spacing: 12) {
             Label { Text("Recovery") } icon: { Image(systemName: "battery.75percent") }
-                .font(.rounded(15, .semibold))
+                .scaledFont(15, .semibold)
                 .foregroundStyle(Jade.ink)
                 .fixedSize()
             Text("WHOOP")
                 .font(.system(size: 9, weight: .medium))
                 .tracking(1.2)
-                .foregroundStyle(Jade.ink3)
+                .foregroundStyle(Jade.ink2)
             Track(fraction: (recovery ?? 0) / 100, color: Jade.sleep)
             Text(recovery.map { "\(Int($0.rounded()))%" } ?? "–")
-                .font(.rounded(17, .bold))
+                .scaledFont(17, .bold)
                 .foregroundStyle(Jade.ink)
                 .monospacedDigit()
         }
         .card()
         .accessibilityElement(children: .combine)
+    }
+}
+
+/// 「手表记错了」 (PRD v0.3 §4.2): when the user really fell asleep last night. It only decides
+/// whether the night was on time, so Save waits for a time that counts. Two a month, apart from
+/// the weekly leave night.
+private struct SleepFixSheet: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
+    @State private var picked: Date
+    private let clock = ClockStyle.shared
+
+    init(start: Date) { _picked = State(initialValue: start) }
+
+    /// The picked hour and minute, as last night (evening times on the day before).
+    private var moment: Date {
+        let parts = Calendar.current.dateComponents([.hour, .minute], from: picked)
+        return model.lastNightMoment(minutes: (parts.hour ?? 0) * 60 + (parts.minute ?? 0))
+    }
+
+    var body: some View {
+        let counts = moment <= model.lastNightDeadline
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("When did you fall asleep?")
+                    .scaledFont(20, .bold)
+                    .foregroundStyle(Jade.ink)
+                Text(model.lastNightRecordedOnset.map { "Your watch saw \(Format.time($0)). This only changes whether last night counts as an early night." }
+                     ?? "Your watch didn’t see you fall asleep. This only changes whether last night counts as an early night.")
+                    .scaledFont(14, .medium)
+                    .foregroundStyle(Jade.ink2)
+                    .fixedSize(horizontal: false, vertical: true)
+                DatePicker("Asleep at", selection: $picked, displayedComponents: .hourAndMinute)
+                    .datePickerStyle(.wheel)
+                    .labelsHidden()
+                    // the wheel follows the clock chosen in Settings, not just the phone's
+                    .environment(\.locale, Locale(identifier: clock.twelveHour ? "en_US" : "en_GB"))
+                    .frame(maxWidth: .infinity)
+                Text(counts ? "That counts as an early night." : "Still after \(Format.time(model.lastNightDeadline)), so it wouldn’t count.")
+                    .scaledFont(14, .semibold)
+                    .foregroundStyle(counts ? Jade.ink : Jade.ink2)
+                    .frame(maxWidth: .infinity)
+                Button("Save") {
+                    model.fixLastNight(moment)
+                    dismiss()
+                }
+                .buttonStyle(PillButtonStyle(primary: true))
+                .disabled(!counts)
+                .opacity(counts ? 1 : 0.55)
+                Text("\(model.sleepFixesLeft) of \(AppModel.sleepFixesPerMonth) left this month, apart from your leave night.")
+                    .scaledFont(12, .medium)
+                    .foregroundStyle(Jade.ink2)
+                    .frame(maxWidth: .infinity)
+                    .multilineTextAlignment(.center)
+            }
+            .padding(.horizontal, Metrics.gutter)
+            .padding(.top, 26)
+            .padding(.bottom, 12)
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+        .presentationBackground(Jade.canvas)
     }
 }
 
@@ -254,7 +356,7 @@ struct Tally: View {
     var body: some View {
         HStack(spacing: 3) {
             if booked && check { Image(systemName: "checkmark").font(.system(size: 9, weight: .heavy)) }
-            Text(text).font(.rounded(12, .bold))
+            Text(text).scaledFont(12, .bold)
         }
         .foregroundStyle(booked ? on : Jade.ink2)
         .padding(.horizontal, 9)
@@ -287,7 +389,7 @@ struct CardTitle<Trailing: View>: View {
             if showIcon {
                 Image(systemName: icon).font(.system(size: 13, weight: .semibold)).foregroundStyle(Jade.ink2)
             }
-            Text(title).font(.rounded(15, .semibold)).foregroundStyle(Jade.ink).lineLimit(1).minimumScaleFactor(0.8)
+            Text(title).scaledFont(15, .semibold).foregroundStyle(Jade.ink).lineLimit(1).minimumScaleFactor(0.8)
             Spacer(minLength: spacing == 6 ? 4 : 2)
             trailing()
         }
@@ -303,19 +405,29 @@ extension CardTitle where Trailing == EmptyView {
 struct BigNumber: View {
     let text: String
     var size: CGFloat = 46
+    /// "PM" after a 12-hour time, smaller and grey.
+    var period: String?
 
-    init(_ text: String, size: CGFloat = 46) {
+    init(_ text: String, size: CGFloat = 46, period: String? = nil) {
         self.text = text
         self.size = size
+        self.period = period
     }
 
     var body: some View {
-        Text(text)
-            .font(.rounded(size, .bold))
-            .foregroundStyle(Jade.ink)
-            .monospacedDigit()
-            .lineLimit(1)
-            .minimumScaleFactor(0.6)
+        HStack(alignment: .firstTextBaseline, spacing: 4) {
+            Text(text)
+                .scaledFont(size, .bold)
+                .foregroundStyle(Jade.ink)
+                .monospacedDigit()
+            if let period {
+                Text(period)
+                    .scaledFont(size * 0.4, .bold)
+                    .foregroundStyle(Jade.ink2)
+            }
+        }
+        .lineLimit(1)
+        .minimumScaleFactor(0.6)
     }
 }
 

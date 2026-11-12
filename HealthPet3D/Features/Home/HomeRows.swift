@@ -8,6 +8,8 @@ struct CellRow: View {
 
     let cells: [Cell]
     let color: Color
+    /// A 1 pt outline on filled cells (lime on the canvas, by day).
+    var filledStroke: Color = .clear
     var size = CGSize(width: 16, height: 8)
     var gap: CGFloat = 4
     /// index → bump count: a cell bumps each time its count goes up.
@@ -26,8 +28,11 @@ struct CellRow: View {
                         .frame(width: size.width, height: size.height)
                     } else {
                         ZStack(alignment: .leading) {
+                            // empty: the track with a 1 pt outline so it reads (PRD v0.3 §8.1)
                             Capsule().fill(Jade.fill)
+                                .overlay(Capsule().strokeBorder(Jade.cellStroke, lineWidth: 1))
                             Capsule().fill(color)
+                                .overlay(Capsule().strokeBorder(filledStroke, lineWidth: 1))
                                 .scaleEffect(x: cell == .filled ? 1 : 0.001, anchor: .leading)
                                 .opacity(cell == .filled ? 1 : 0)
                         }
@@ -61,8 +66,8 @@ enum StatusGrid {
     static let lead: CGFloat = icon + 12 + label
 }
 
-/// Home status: Asleep (the onset time, a lime check once an on-time night is booked, an empty
-/// ring while its moon still waits), then Slept (last night's sleep as the watch recorded it) or,
+/// Home status: Asleep (the onset time, a lime check once an on-time night is booked; nothing
+/// while its moon still waits), then Slept (last night's sleep as the watch recorded it) or,
 /// for Whoop users, Rest (Whoop's recovery as one bar, no number, marked WHOOP). Each row explains
 /// itself with a tap. Nothing here is our own estimate (PRD v0.3 「只读原值」).
 struct StatusRow<Content: View>: View {
@@ -77,14 +82,16 @@ struct StatusRow<Content: View>: View {
                 .foregroundStyle(Jade.ink2)
                 .frame(width: StatusGrid.icon)
             Text(label)
-                .font(.rounded(11, .heavy))
-                .foregroundStyle(Jade.ink3)
+                .scaledFont(11, .heavy)
+                .foregroundStyle(Jade.ink2)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
                 .frame(width: StatusGrid.label, alignment: .leading)
                 .padding(.leading, 12)
             content()
                 .padding(.leading, 10)
         }
-        .frame(height: 24)
+        .frame(minHeight: 24)
         .contentShape(Rectangle())
     }
 }
@@ -95,17 +102,22 @@ struct AsleepRow: View {
     var body: some View {
         StatusRow(icon: "moon", label: "Asleep") {
             HStack {
-                Text(status.onset ?? "–")
-                    .font(.rounded(15, .bold))
-                    .foregroundStyle(Jade.ink)
-                    .monospacedDigit()
+                HStack(alignment: .firstTextBaseline, spacing: 3) {
+                    Text(status.onset ?? "–")
+                        .scaledFont(15, .bold)
+                        .foregroundStyle(Jade.ink)
+                        .monospacedDigit()
+                    if let period = status.onsetPeriod {
+                        Text(period)
+                            .scaledFont(11, .bold)
+                            .foregroundStyle(Jade.ink2)
+                    }
+                }
                 Spacer()
                 ZStack {
                     if status.onTime {
                         CheckBadge(color: Jade.sleep, size: 20)
                             .transition(.scale(scale: 0.3).combined(with: .opacity))
-                    } else if status.checkWaiting {
-                        Circle().stroke(Jade.ink3.opacity(0.6), lineWidth: 1.5).frame(width: 20, height: 20)
                     }
                 }
                 .frame(width: 24, height: 24)
@@ -113,7 +125,7 @@ struct AsleepRow: View {
             }
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(status.onset.map { "Asleep at \($0)\(status.onTime ? ", on time" : "")" } ?? "Asleep, no sleep data")
+        .accessibilityLabel(status.onsetText.map { "Asleep at \($0)\(status.onTime ? ", on time" : "")" } ?? "Asleep, no sleep data")
         .accessibilityHint("Explains this row")
         .accessibilityAddTraits(.isButton)
     }
@@ -126,7 +138,7 @@ struct SleptRow: View {
     var body: some View {
         StatusRow(icon: "bed.double", label: "Slept") {
             Text(status.slept ?? "–")
-                .font(.rounded(15, .bold))
+                .scaledFont(15, .bold)
                 .foregroundStyle(Jade.ink)
                 .monospacedDigit()
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -145,11 +157,11 @@ struct RecoveryRow: View {
     var body: some View {
         StatusRow(icon: "battery.75percent", label: "Rest") {
             HStack(spacing: 8) {
-                Track(fraction: status.recovery ?? 0, color: Jade.sleep)
+                Track(fraction: status.recovery ?? 0, color: Jade.sleep, stroke: Jade.limeStroke)
                 Text("WHOOP")
                     .font(.system(size: 9, weight: .medium))
                     .tracking(1.2)
-                    .foregroundStyle(Jade.ink3)
+                    .foregroundStyle(Jade.ink2)
             }
             .padding(.trailing, 4)
         }
@@ -170,8 +182,8 @@ struct WeekRow: View {
     var body: some View {
         HStack(spacing: 0) {
             Text("This week")
-                .font(.rounded(11, .heavy))
-                .foregroundStyle(Jade.ink3)
+                .scaledFont(11, .heavy)
+                .foregroundStyle(Jade.ink2)
                 .lineLimit(1)
                 .fixedSize()
                 .frame(width: StatusGrid.lead, alignment: .trailing)
@@ -181,13 +193,13 @@ struct WeekRow: View {
                     .background(HomeSpot.marks(prefix: "w", count: 3))
                 Image(systemName: "moon").font(.system(size: 11, weight: .bold)).foregroundStyle(Jade.ink2)
                     .padding(.leading, 10)
-                CellRow(cells: cells.nightRow, color: Jade.sleep, pulses: nightPulses)
+                CellRow(cells: cells.nightRow, color: Jade.sleep, filledStroke: Jade.limeStroke, pulses: nightPulses)
                     .background(HomeSpot.marks(prefix: "n", count: 5))
             }
             .padding(.leading, 10)
             Spacer(minLength: 0)
         }
-        .frame(height: 16)
+        .frame(minHeight: 16)
         .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("This week: \(min(cells.workoutCount, 3)) of 3 workouts, \(min(cells.nightCount, 5)) of 5 early nights")
@@ -211,10 +223,10 @@ struct WeekStrip: View {
             ForEach(days) { day in
                 VStack(spacing: 6) {
                     Text(day.letter)
-                        .font(.rounded(11, .semibold))
-                        .foregroundStyle(Jade.ink3)
+                        .scaledFont(11, .semibold)
+                        .foregroundStyle(Jade.ink2)
                     Text("\(day.number)")
-                        .font(.rounded(17, .bold))
+                        .scaledFont(17, .bold)
                         .foregroundStyle(day.isToday ? Jade.onAccent : day.isFuture ? Jade.ink3 : Jade.ink)
                         .frame(width: 34, height: 34)
                         .background(Circle().fill(day.isToday ? Jade.accent : Color.clear))

@@ -13,6 +13,7 @@ struct HomeScreen: View {
     @Environment(Router.self) private var router
     @Environment(\.colorScheme) private var scheme
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var stage: PetStage { PetStage.shared }
     @State private var line: String?
@@ -26,6 +27,8 @@ struct HomeScreen: View {
     @State private var cardWeek: WeekProgress?
     /// During the wake-up the bubbles wait, then grow.
     @State private var foodHidden = false
+    /// The pet asks whether to yawn 30 minutes before bed (once ever, after the first on-time moon).
+    @State private var askingBedtime = false
 
     // feeding
     /// Bubbles popping right now (the model already booked them).
@@ -79,6 +82,8 @@ struct HomeScreen: View {
                 .padding(.bottom, 2)
                 .background(HomeSpot.mark("dock"))
         }
+        // the layout is tight: text grows with the system size, but at most two steps (PRD v0.3 §8.2)
+        .dynamicTypeSize(...DynamicTypeSize.xxLarge)
         .coordinateSpace(name: HomeSpot.space)
         .onPreferenceChange(HomeSpot.Key.self) { spots = $0 }
         .overlay { FeedLayer(feeds: feeds) }
@@ -130,11 +135,11 @@ struct HomeScreen: View {
             } label: {
                 HStack(spacing: 6) {
                     Text(pet.name)
-                        .font(.rounded(28, .bold))
+                        .scaledFont(28, .bold)
                         .foregroundStyle(Jade.ink)
                     Image(systemName: "chevron.down")
                         .font(.system(size: 13, weight: .bold))
-                        .foregroundStyle(Jade.ink3)
+                        .foregroundStyle(Jade.ink2)
                 }
             }
             .accessibilityLabel("Main pet: \(pet.name)")
@@ -165,7 +170,12 @@ struct HomeScreen: View {
                     .frame(width: size.width, height: size.height)
                     .accessibilityLabel("\(pet.name). Tap, tap again, or hold.")
 
-                if let line {
+                if askingBedtime {
+                    BedtimeQuestion(sure: { answerBedtime(true) }, notNow: { answerBedtime(false) })
+                        .frame(maxWidth: size.width * 0.8)
+                        .position(x: size.width / 2, y: max(48, layout.headTop - 56))
+                        .transition(.scale(scale: 0.85, anchor: .bottom).combined(with: .opacity))
+                } else if let line {
                     SpeechBubble(text: line)
                         .frame(maxWidth: size.width * 0.7)
                         .position(x: size.width / 2, y: max(26, layout.headTop - 34))
@@ -180,7 +190,8 @@ struct HomeScreen: View {
                     .buttonStyle(BubblePress())
                     .disabled(eating[bubble.id] != nil || (tour != nil && tour != .tryIt))
                     .position(layout.slot(bubble.slot))
-                    .transition(.asymmetric(insertion: .scale(scale: 0.3).combined(with: .opacity), removal: .identity))
+                    .transition(.asymmetric(insertion: .scale(scale: 0.3).combined(with: .opacity),
+                                            removal: reduceMotion ? .opacity : .identity))
                     .accessibilityLabel("Feed \(bubble.spoken)")
                     .accessibilityHint("Books it into this week")
                 }
@@ -214,6 +225,7 @@ struct HomeScreen: View {
     /// jelly → pop → crumbs into the mouth → swallow → the tag and the dot into this week's cell.
     private func harvest(_ bubble: FoodBubble, layout: HomeLayout) {
         guard eating[bubble.id] == nil, let scene = spots["scene"] else { return }
+        if reduceMotion { harvestCalmly(bubble, layout: layout); return }
         let at = layout.slot(bubble.slot)
         if held == nil { held = Shown(status: model.homeStatus, cells: model.weekCells, days: model.weekStrip) }
         let before = model.weekCells
@@ -253,7 +265,56 @@ struct HomeScreen: View {
             try? await Task.sleep(for: .seconds(Feed.endsAt - Feed.landsAt))
             feeds.removeAll { $0.id == feed.id }
             // a new pet, a level, a 自律周: the moments after the meal
-            if inFlight == 0 { greet() }
+            if inFlight == 0 { afterMeal(feedback) }
+        }
+    }
+
+    /// Reduce Motion (PRD v0.3 §8.2): the bubble fades, the cell fills at once and the tag is said;
+    /// no jelly, crumbs or flying dot, and the pet only changes its face.
+    private func harvestCalmly(_ bubble: FoodBubble, layout: HomeLayout) {
+        let at = layout.slot(bubble.slot)
+        if tour == .tryIt { tour = nil }
+        note = nil
+        selectedDay = nil
+        let feedback = withAnimation(.easeOut(duration: 0.3)) { model.book(bubble.credit) }
+        stage.feed(at: CGPoint(x: at.x / layout.size.width, y: at.y / layout.size.height), then: feedback.expression)
+        bites += 1
+        if let tag = feedback.tag { say(tag) }
+        inFlight += 1
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(1.6))
+            inFlight -= 1
+            if inFlight == 0, model.foodBubbles.isEmpty { stage.celebrate("hop") }
+            if inFlight == 0 { afterMeal(feedback) }
+        }
+    }
+
+    /// After the last bite: the first on-time moon ever brings the pet's one question about the
+    /// bedtime reminder; otherwise the usual moments (a new pet, a level, a 自律周).
+    private func afterMeal(_ feedback: BookingFeedback) {
+        if feedback.lightsCheck, !home.askedAboutBedtime {
+            guard !home.notifyBedtime else { home.askedAboutBedtime = true; return greet() }
+            lineTask?.cancel()
+            line = nil
+            withAnimation(.spring(duration: 0.3)) { askingBedtime = true }
+            return
+        }
+        greet()
+    }
+
+    private func answerBedtime(_ sure: Bool) {
+        home.askedAboutBedtime = true
+        withAnimation(.easeOut(duration: 0.2)) { askingBedtime = false }
+        Task { @MainActor in
+            if sure {
+                // the system asks for permission; a "no" there leaves the switch off
+                home.notifyBedtime = await PetNotifications.requestPermission()
+                say(home.notifyBedtime ? "Deal! I’ll yawn at you before bed." : "Okay. It’s in Settings if you change your mind.")
+            } else {
+                say("Okay. It’s in Settings if you change your mind.")
+            }
+            try? await Task.sleep(for: .seconds(3.2))
+            greet()
         }
     }
 
@@ -342,7 +403,7 @@ struct HomeScreen: View {
 
     private var asleepNote: some View {
         let target = SleepSchedule.clock(model.sleepSchedule.targets(nightEnding: Date()).bed)
-        let onset = model.homeStatus.onset
+        let onset = model.homeStatus.onsetText
         // No sleep at all in 30 days (no watch at night): say how the moon comes (PRD v0.3 §6).
         guard model.hasSleepData || onset != nil else {
             return InfoNote("Asleep", AppModel.noSleepLine)
@@ -432,7 +493,7 @@ struct HomeScreen: View {
     ]
 
     private func greet() {
-        guard home.onboarded, stage.isReady, onScreen, scenePhase == .active, inFlight == 0 else { return }
+        guard home.onboarded, stage.isReady, onScreen, scenePhase == .active, inFlight == 0, !askingBedtime else { return }
 
         // The first time after the first open: the wake-up, then the pet shows the user around.
         if !home.tourDone {
@@ -554,10 +615,12 @@ struct HomeScreen: View {
                 }
             }
             NavigationLink(value: Route.today) {
-                DockItem(name: "Today", strong: true) {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 24, weight: .bold))
-                        .foregroundStyle(Jade.onPrimary)
+                DockItem(name: "Today") {
+                    // C 三根小柱 (decided 2026-11-10): Today is where the numbers are, not a
+                    // check-in button, so no check mark. VoiceOver still reads "Today".
+                    TodayBars()
+                        .stroke(Jade.onPrimary, style: StrokeStyle(lineWidth: 3.4, lineCap: .round))
+                        .frame(width: 24, height: 24)
                         .frame(width: 66, height: 66)
                         .background(Circle().fill(Jade.primary))
                         .softShadow(2.2)
@@ -619,18 +682,30 @@ struct HomeScreen: View {
     #endif
 }
 
-/// A dock button and its name underneath (11 pt, grey; Today's a shade darker).
+/// The dock's Today icon: three small bars, short · tall · middle (drawn on a 24 pt grid).
+private struct TodayBars: Shape {
+    func path(in rect: CGRect) -> Path {
+        let s = min(rect.width, rect.height) / 24
+        var path = Path()
+        for (x, top) in [(6.0, 14.0), (12.0, 4.5), (18.0, 10.0)] {
+            path.move(to: CGPoint(x: rect.minX + x * s, y: rect.minY + 19.5 * s))
+            path.addLine(to: CGPoint(x: rect.minX + x * s, y: rect.minY + top * s))
+        }
+        return path
+    }
+}
+
+/// A dock button and its name underneath (11 pt, the secondary grey like every label).
 private struct DockItem<Icon: View>: View {
     let name: String
-    var strong = false
     @ViewBuilder var icon: () -> Icon
 
     var body: some View {
         VStack(spacing: 6) {
             icon()
             Text(name)
-                .font(.rounded(11, .heavy))
-                .foregroundStyle(strong ? Jade.ink2 : Jade.ink3)
+                .scaledFont(11, .heavy)
+                .foregroundStyle(Jade.ink2)
         }
         .frame(minWidth: 66)
         .contentShape(Rectangle())
@@ -694,6 +769,8 @@ struct FoodBubbleView: View {
     let phase: Int
     var eaten = false
     @State private var up = false
+    /// Reduce Motion: the bubbles stand still (PRD v0.3 §8.2).
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private struct Pop {
         var sx: CGFloat = 1
@@ -716,7 +793,7 @@ struct FoodBubbleView: View {
                 .font(.system(size: 15, weight: .semibold))
                 .frame(height: 17)
             Text(bubble.label)
-                .font(.rounded(11, .heavy))
+                .scaledFont(11, .heavy)
                 .monospacedDigit()
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
@@ -758,8 +835,9 @@ struct FoodBubbleView: View {
                 LinearKeyframe(0, duration: 0.3)
             }
         }
-        .offset(y: up ? -3.5 : 3.5)
+        .offset(y: reduceMotion ? 0 : up ? -3.5 : 3.5)
         .onAppear {
+            guard !reduceMotion else { return }
             withAnimation(.easeInOut(duration: 1.7).repeatForever(autoreverses: true).delay(Double(phase) * 0.45)) {
                 up = true
             }
@@ -777,12 +855,52 @@ private struct BubblePress: ButtonStyle {
     }
 }
 
+/// The pet's one question about the bedtime reminder: Sure (then the system asks) or Not now.
+private struct BedtimeQuestion: View {
+    let sure: () -> Void
+    let notNow: () -> Void
+
+    var body: some View {
+        VStack(spacing: 10) {
+            Text("Want me to yawn at you 30 minutes before bed?")
+                .scaledFont(14, .semibold)
+                .foregroundStyle(Jade.ink)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 8) {
+                Button("Not now", action: notNow)
+                    .buttonStyle(QuestionButton(primary: false))
+                Button("Sure", action: sure)
+                    .buttonStyle(QuestionButton(primary: true))
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(Jade.card))
+        .softShadow(1)
+    }
+
+    private struct QuestionButton: ButtonStyle {
+        let primary: Bool
+
+        func makeBody(configuration: Configuration) -> some View {
+            configuration.label
+                .scaledFont(14, .bold)
+                .foregroundStyle(primary ? Jade.onPrimary : Jade.ink)
+                .padding(.horizontal, 16)
+                .frame(minHeight: 34)
+                .background(Capsule().fill(primary ? Jade.primary : Jade.fill))
+                .opacity(configuration.isPressed ? 0.7 : 1)
+        }
+    }
+}
+
 struct SpeechBubble: View {
     let text: String
 
     var body: some View {
         Text(text)
-            .font(.rounded(14, .semibold))
+            .scaledFont(14, .semibold)
             .foregroundStyle(Jade.ink)
             .multilineTextAlignment(.center)
             .padding(.horizontal, 14)

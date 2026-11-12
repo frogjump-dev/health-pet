@@ -35,7 +35,8 @@ struct PetsScreen: View {
     }
 }
 
-/// 「还能遇见谁」: the one way in to the pets not met yet, a few silhouettes and how many there are.
+/// 「还能遇见谁」: the one way in to the pets not met yet, a few silhouettes. No count and no
+/// progress (PRD v0.3 §5.2): meeting them is a surprise, not a list to finish.
 struct StillToMeetTile: View {
     let locked: [Pet3D]
 
@@ -47,9 +48,11 @@ struct StillToMeetTile: View {
                 }
             }
             .frame(height: 62)
-            Text("+\(locked.count)")
+            Text("Still to meet")
                 .font(.rounded(12, .semibold))
                 .foregroundStyle(Jade.ink2)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
         }
         .padding(.top, 22)
         .padding(.bottom, 12)
@@ -58,7 +61,7 @@ struct StillToMeetTile: View {
         .background(RoundedRectangle(cornerRadius: Metrics.tile, style: .continuous).fill(Jade.card.opacity(0.5)))
         .contentShape(RoundedRectangle(cornerRadius: Metrics.tile, style: .continuous))
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(locked.count) pets still to meet")
+        .accessibilityLabel("Pets still to meet")
     }
 }
 
@@ -71,7 +74,7 @@ struct LockedPetsScreen: View {
     var body: some View {
         let locked = model.petRecords.filter { !$0.isUnlocked }
         PageScroll {
-            PageHeader(title: "Still to meet", count: "\(locked.count)")
+            PageHeader(title: "Still to meet")
                 .padding(.bottom, 4)
             LazyVGrid(columns: columns, spacing: 10) {
                 ForEach(locked, id: \.pet.id) { record in
@@ -121,13 +124,13 @@ struct PetTile: View {
     }
 }
 
-/// One pet: big and alive (or a silhouette), its activity and level, Set as main / Dress up.
+/// One pet: big and alive (or a silhouette), its activity and level, Set as main. Dress up stays
+/// hidden until the wardrobe exists (PRD v0.3 §5.4).
 struct PetDetailScreen: View {
     let petID: String
     @Environment(AppModel.self) private var model
     @Environment(HomeState.self) private var home
     @Environment(\.colorScheme) private var scheme
-    @State private var dressUpSoon = false
 
     var body: some View {
         let pet = Pet3D.with(id: petID) ?? .toast
@@ -169,8 +172,6 @@ struct PetDetailScreen: View {
                         .buttonStyle(PillButtonStyle(primary: true))
                         .disabled(isMain)
                         .opacity(isMain ? 0.55 : 1)
-                    Button("Dress up") { dressUpSoon = true }
-                        .buttonStyle(PillButtonStyle(primary: false))
                 }
             }
         }
@@ -179,7 +180,6 @@ struct PetDetailScreen: View {
         .padding(.bottom, 12)
         .background(Jade.canvas.ignoresSafeArea())
         .toolbar(.hidden, for: .navigationBar)
-        .alert("Dress up is coming soon", isPresented: $dressUpSoon) { Button("OK", role: .cancel) {} }
     }
 
     @ViewBuilder
@@ -211,7 +211,7 @@ struct PetDetailScreen: View {
             HStack(alignment: .firstTextBaseline) {
                 Text("Lv \(record.level)").font(.rounded(20, .bold)).foregroundStyle(Jade.ink)
                 Spacer()
-                Text("\(record.level + 1)").font(.rounded(13, .semibold)).foregroundStyle(Jade.ink3)
+                Text("\(record.level + 1)").font(.rounded(13, .semibold)).foregroundStyle(Jade.ink2)
             }
             Track(fraction: record.levelFraction, color: Jade.accent)
         }

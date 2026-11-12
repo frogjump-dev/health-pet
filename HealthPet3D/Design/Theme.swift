@@ -9,8 +9,15 @@ enum Jade {
     /// Secondary buttons, tracks, empty dots.
     static let fill = dynamic(0xE2DFD7, 0x272F25)
     static let ink = dynamic(0x2D392A, 0xEBE9E3)
-    static let ink2 = dynamic(0x6B7466, 0xA3A99C)
-    static let ink3 = dynamic(0xA9ADA2, 0x646C5F)
+    /// Secondary text, and every always-visible label (PRD v0.3 §8.1: 4.6 on the canvas by day).
+    static let ink2 = dynamic(0x626B5D, 0xA3A99C)
+    /// Inactive: dividers, decoration and days still to come, never a label (night 4.9).
+    static let ink3 = dynamic(0xA9ADA2, 0x7E877A)
+    /// The 1 pt outline of an empty week cell (3.1 by day).
+    static let cellStroke = dynamic(0x7D857A, 0x7D857A)
+    /// The 1 pt outline of lime on the canvas (a filled night cell, Whoop's recovery bar): by day
+    /// only, lime is bright enough on the night canvas.
+    static let limeStroke = Color(UIColor { $0.userInterfaceStyle == .dark ? .clear : UIColor(hex: 0x8A8331) })
     /// Workouts, check marks, today.
     static let accent = dynamic(0x4B6844, 0x8FAE85)
     /// Sleep, and the rest bar on home.
@@ -49,9 +56,32 @@ extension UIColor {
 }
 
 extension Font {
-    /// SF Pro Rounded, the app's only typeface.
+    /// SF Pro Rounded, the app's only typeface, at a fixed size (the share card, the pet grid).
     static func rounded(_ size: CGFloat, _ weight: Font.Weight = .semibold) -> Font {
         .system(size: size, weight: weight, design: .rounded)
+    }
+}
+
+/// SF Pro Rounded that grows with the system text size like body text (PRD v0.3 §8.2: Today,
+/// Memories, Settings and the first open follow it; home is capped two steps up).
+private struct ScaledRounded: ViewModifier {
+    @ScaledMetric private var size: CGFloat
+    private let weight: Font.Weight
+
+    init(size: CGFloat, weight: Font.Weight) {
+        _size = ScaledMetric(wrappedValue: size, relativeTo: .body)
+        self.weight = weight
+    }
+
+    func body(content: Content) -> some View {
+        content.font(.rounded(size, weight))
+    }
+}
+
+extension View {
+    /// `.font(.rounded(size, weight))` that follows Dynamic Type.
+    func scaledFont(_ size: CGFloat, _ weight: Font.Weight = .semibold) -> some View {
+        modifier(ScaledRounded(size: size, weight: weight))
     }
 }
 

@@ -15,7 +15,7 @@ const post = (msg) => { try { window.webkit?.messageHandlers?.pet?.postMessage(m
 const stage = document.getElementById('stage');
 window.addEventListener('error', (e) => post({ type: 'error', message: `${e.message} @${e.lineno}:${e.colno}` }));
 window.addEventListener('unhandledrejection', (e) => post({ type: 'error', message: String(e.reason) }));
-const cfg = { pet: 'toast', rug: false, shadow: true, dark: false, canvas: null, bedtime: false, mood: 'normal', energy: 'normal', interactive: true, still: null,
+const cfg = { pet: 'toast', rug: false, shadow: true, dark: false, canvas: null, bedtime: false, mood: 'normal', energy: 'normal', calm: false, interactive: true, still: null,
   // where the pet's 100 × 100 box sits in the page, as fractions of the page width / height
   box: { x: 0.19, y: 0.245, size: 0.62 } };
 let pet = null, dir = null, raf = 0, last = 0, paused = false, gulp = -1, gulpAmp = 1;
@@ -137,7 +137,11 @@ function tick(now) {
   energyTick(dt);
   let st = dir.update(dt);
   if (feeds.length || look.w > 0.01) st = feedTick(dt, st);
+  // Reduce Motion (PRD v0.3 §8.2): the body stays still and effects are left out; blinks, the
+  // eyes and every expression's face still change.
+  if (cfg.calm) st = { ...st, lift: 0, roll: 0, spin: 0, sx: 1, sy: 1, yaw: 0, pitch: 0, fx: [] };
   pet.frame(st);
+  if (gulp >= 0 && cfg.calm) gulp = -1;
   if (gulp >= 0) {
     // the pet swallows food: a quick squash on its feet (a smaller one for each chew)
     gulp += dt;

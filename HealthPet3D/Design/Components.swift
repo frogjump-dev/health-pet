@@ -80,8 +80,8 @@ struct PageHeader<Trailing: View>: View {
             }
             if !title.isEmpty {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text(title).font(.rounded(32, .bold)).foregroundStyle(Jade.ink)
-                    if let count { Text(count).font(.rounded(20, .semibold)).foregroundStyle(Jade.ink3) }
+                    Text(title).scaledFont(32, .bold).foregroundStyle(Jade.ink)
+                    if let count { Text(count).scaledFont(20, .semibold).foregroundStyle(Jade.ink2) }
                 }
             }
         }
@@ -100,7 +100,7 @@ struct PillButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.rounded(16, .bold))
+            .scaledFont(16, .bold)
             .foregroundStyle(primary ? Jade.onPrimary : Jade.ink)
             .frame(maxWidth: .infinity, minHeight: 52)
             .background(Capsule().fill(primary ? Jade.primary : Jade.fill))
@@ -115,12 +115,15 @@ struct Track: View {
     let fraction: Double
     var color: Color = Jade.accent
     var height: CGFloat = 6
+    /// A 1 pt outline on the filled part (lime on the canvas, by day).
+    var stroke: Color = .clear
 
     var body: some View {
         GeometryReader { geo in
             ZStack(alignment: .leading) {
                 Capsule().fill(Jade.fill)
                 Capsule().fill(color)
+                    .overlay(Capsule().strokeBorder(stroke, lineWidth: 1))
                     .frame(width: max(fraction > 0 ? height : 0, geo.size.width * min(1, max(0, fraction))))
             }
         }

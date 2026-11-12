@@ -272,7 +272,7 @@ struct ShareCard: View {
                     if i > 0 { Dot() }
                     LineItem(icon: part.icon, color: part.color, text: part.text)
                 }
-                if todayParts.isEmpty { LineItem(icon: "sun.max", color: Jade.ink3, text: "A quiet day") }
+                if todayParts.isEmpty { LineItem(icon: "sun.max", color: Jade.ink2, text: "A quiet day") }
             case .pets:
                 LineItem(icon: "pawprint", color: Jade.accent, text: "\(facts.pets.count) of \(facts.petsAvailable) pets")
                 Dot()
@@ -363,7 +363,7 @@ struct ShareCard: View {
                     .monospacedDigit()
                 Text(facts.weeks == 1 ? "disciplined\nweek" : "disciplined\nweeks")
                     .font(.rounded(13, .semibold))
-                    .foregroundStyle(Jade.ink3)
+                    .foregroundStyle(Jade.ink2)
                     .lineSpacing(-2)
                     .fixedSize()
             }
