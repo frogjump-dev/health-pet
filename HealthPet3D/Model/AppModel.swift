@@ -72,6 +72,8 @@ final class AppModel {
     }
 
     let store: PetStore
+    /// The wardrobe: points, draws and each pet's outfit (PRD v0.3 §5.4).
+    let dressUp: DressUpStore
     /// Which food bubbles were eaten (PRD v0.2 §4.4). Live data's book is saved; demo data
     /// starts a fresh one every launch.
     private let liveBook: CreditBook
@@ -101,6 +103,7 @@ final class AppModel {
         self.defaults = defaults
         self.backend = backend
         store = PetStore(defaults: defaults, cloud: cloud)
+        dressUp = DressUpStore(defaults: defaults, cloud: cloud)
         liveBook = CreditBook(defaults: defaults, cloud: cloud)
         demoBook = CreditBook(defaults: nil, history: 6)
         whoop = WhoopProvider(backend: backend)
@@ -142,8 +145,10 @@ final class AppModel {
     func syncCloud() {
         let petsChanged = store.mergeFromCloud()
         let bookChanged = liveBook.mergeFromCloud()
+        dressUp.mergeFromCloud()
         store.pushToCloud()
         liveBook.pushToCloud()
+        dressUp.pushToCloud()
         if petsChanged || bookChanged { reevaluate() }
     }
 

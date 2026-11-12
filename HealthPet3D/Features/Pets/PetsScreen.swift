@@ -16,6 +16,13 @@ struct PetsScreen: View {
         PageScroll {
             PageHeader(title: "Pets", count: "\(unlocked.count)")
                 .padding(.bottom, 4)
+            // enough points for a draw: straight into the main pet's Dress up (PRD v0.3 §5.4, D01)
+            if model.dressUp.canDraw {
+                NavigationLink(value: Route.dressUp(model.mainPet3D.id)) {
+                    DrawRow(points: model.dressUp.points, petName: model.mainPet3D.name)
+                }
+                .buttonStyle(.plain)
+            }
             LazyVGrid(columns: columns, spacing: 10) {
                 ForEach(unlocked, id: \.pet.id) { record in
                     NavigationLink(value: Route.pet(record.pet.id)) {
@@ -32,6 +39,41 @@ struct PetsScreen: View {
             }
         }
         .onAppear { home.markSeen(model.unlockedPets) }
+    }
+}
+
+/// 「Draw a new item · 7 pts」 at the top of Pets while a draw is possible.
+struct DrawRow: View {
+    let points: Int
+    let petName: String
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "gift")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(Jade.ink)
+                .frame(width: 38, height: 38)
+                .background(Circle().fill(Jade.fill))
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Draw a new item")
+                    .scaledFont(15, .bold)
+                    .foregroundStyle(Jade.ink)
+                Text("\(points) pts · in Dress up")
+                    .scaledFont(12, .medium)
+                    .foregroundStyle(Jade.ink2)
+            }
+            Spacer(minLength: 0)
+            Image(systemName: "chevron.right")
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(Jade.ink2)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 11)
+        .background(RoundedRectangle(cornerRadius: Metrics.tile, style: .continuous).fill(Jade.card))
+        .contentShape(RoundedRectangle(cornerRadius: Metrics.tile, style: .continuous))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Draw a new item, \(points) points")
+        .accessibilityHint("Opens Dress up for \(petName)")
     }
 }
 
@@ -124,13 +166,15 @@ struct PetTile: View {
     }
 }
 
-/// One pet: big and alive (or a silhouette), its activity and level, Set as main. Dress up stays
-/// hidden until the wardrobe exists (PRD v0.3 §5.4).
+/// One pet: big and alive in what it wears (or a silhouette), its activity and level, Set as main
+/// and Dress up (PRD v0.3 §5.4; a dot on it while a draw is possible).
 struct PetDetailScreen: View {
     let petID: String
     @Environment(AppModel.self) private var model
     @Environment(HomeState.self) private var home
     @Environment(\.colorScheme) private var scheme
+    /// 「Toast is wearing the Party hat」, after the welcome gift was put on from home (D13).
+    @State private var wornLine: String?
 
     var body: some View {
         let pet = Pet3D.with(id: petID) ?? .toast
@@ -172,6 +216,29 @@ struct PetDetailScreen: View {
                         .buttonStyle(PillButtonStyle(primary: true))
                         .disabled(isMain)
                         .opacity(isMain ? 0.55 : 1)
+                    NavigationLink(value: Route.dressUp(pet.id)) {
+                        Text("Dress up")
+                    }
+                    .buttonStyle(PillButtonStyle(primary: false))
+                    .overlay(alignment: .trailing) {
+                        if model.dressUp.canDraw {
+                            Circle().fill(Jade.accent).frame(width: 8, height: 8).padding(.trailing, 26)
+                                .allowsHitTesting(false)
+                        }
+                    }
+                    .accessibilityLabel(model.dressUp.canDraw ? "Dress up, you can draw a new item" : "Dress up")
+                    .overlay(alignment: .center) {
+                        if let wornLine {
+                            Text(wornLine)
+                                .scaledFont(14, .bold)
+                                .foregroundStyle(Jade.onPrimary)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 10)
+                                .background(Capsule().fill(Jade.primary))
+                                .transition(.scale(scale: 0.9).combined(with: .opacity))
+                                .allowsHitTesting(false)
+                        }
+                    }
                 }
             }
         }
@@ -180,6 +247,20 @@ struct PetDetailScreen: View {
         .padding(.bottom, 12)
         .background(Jade.canvas.ignoresSafeArea())
         .toolbar(.hidden, for: .navigationBar)
+        .task { await sayWorn(pet) }
+    }
+
+    /// The welcome gift went on from home: say so once and puff up proudly.
+    private func sayWorn(_ pet: Pet3D) async {
+        guard let worn = model.dressUp.justWorn, worn.pet == pet.id, let decor = Decor.with(id: worn.item) else { return }
+        model.dressUp.justWorn = nil
+        let text = "\(pet.name) is wearing the \(decor.name)"
+        withAnimation(.spring(duration: 0.3)) { wornLine = text }
+        AccessibilityNotification.Announcement(text).post()
+        try? await Task.sleep(for: .seconds(0.6))
+        PetStage.shared.celebrate("proud")
+        try? await Task.sleep(for: .seconds(2.2))
+        withAnimation(.easeOut(duration: 0.25)) { wornLine = nil }
     }
 
     @ViewBuilder
@@ -193,7 +274,10 @@ struct PetDetailScreen: View {
                     LivePet(config: PetStageConfig(
                         pet: pet.id, rug: false, dark: scheme == .dark, canvas: Jade.cardHex(dark: scheme == .dark),
                         energy: isMain ? (home.energyOverride ?? model.energy).rawValue : "normal",
+                        decor: model.dressUp.outfit(for: pet.id),
                         box: .init(x: Double((w - side) / 2 / w), y: Double((h - side) / 2 / h), size: Double(side / w))))
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(model.dressUp.wearingLabel(pet))
                 } else {
                     PetPicture(pet: pet, locked: true)
                         .frame(width: side, height: side)

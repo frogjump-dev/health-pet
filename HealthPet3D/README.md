@@ -47,9 +47,9 @@ HealthPet3D/
                 DayFacts（状态区、日历行、宠物说的话）、Progress
   Health/       数据源：HealthKit、Whoop（走 Supabase 后端）、Demo
   Store/        PetStore：存在手机上的领养日、回忆、自律周、运动记录、请假日、健康数据缓存；
-                CreditBook：吃掉（入账）了哪些食物，每条一行记录
+                CreditBook：吃掉（入账）了哪些食物，每条一行记录；DressUpStore：装扮的积分、抽到的装饰、每只宠物的穿法
   Backend/      Supabase 客户端（Whoop 登录和同步）
-  Features/     Home · Today · Pets（含宠物详情）· Share · Memories · Settings
+  Features/     Home · Today · Pets（含宠物详情）· Dress up（衣柜、礼物卡）· Share · Memories · Settings
   Resources/    Assets（20 只宠物 × 正常/开心两张静态图、App 图标）、PetWeb/pet.html
   PetWeb/       pet.html 的源码和构建脚本（不进 App）
 ```
@@ -59,7 +59,7 @@ HealthPet3D/
 ## 3D 宠物（pet.html）
 
 - 一个离线网页：open-bot-avatar 0.1.2（MIT）+ 3D方案 表情引擎 engine.js + 活宠物导演 live.js（和预览页同一份代码，没有改）+ `PetWeb/src/bridge.js`（App 和宠物之间的接口）。
-- 只有首页和宠物详情页的宠物是活的；Pets 格子和分享卡用静态图（由同一个 3D 宠物渲染）。
+- 只有首页、宠物详情和 Dress up 的宠物是活的（同一个网页，在页面之间传递）；Pets 格子和分享卡用静态图（由同一个 3D 宠物渲染）。
   网页启动要一点时间，这期间同一位置先显示静态图，宠物画出来后淡掉；iOS 在后台回收了网页进程时会自动重新加载。
 - 改了 `PetWeb/src/` 以后：`cd HealthPet3D/PetWeb && npm install && npm run build`，会重新生成 `Resources/PetWeb/pet.html`。
   重新渲染静态图和图标：`node tools/stills.js ../Resources/PetWeb/pet.html <输出目录>`（需要 Playwright）。
@@ -185,6 +185,26 @@ PRD v0.3 §10.3「已定、还没做」分四批做，这是第 1 批「只读�
 4. 装上之后看一眼：Settings 能打开，重装后 Memories 和宠物等级还在（等 iCloud 下载完，通常几秒到一分钟）。
    免费的个人团队签不了 iCloud 和 App Group，所以 USB 直装也要用付费团队。
 
+## Dress up 装扮（PRD v0.3 §5.4，2026-11-12）
+
+设计稿：项目文件 `健康宠物/3D方案/ui-final-v3/dressup-v1/`（交接说明、单帧 D01–D13 / N01–N11）。
+
+- **装饰引擎**：`PetWeb/src/decor.js` 原样复制自 `健康宠物/3D方案/decor-v1/workbench/src/decor.js`（第十一轮，51 件），
+  不要改它的 `FLAT_Z.mode` 和 `FIT_OVERRIDES`。bridge 多了 `decor`（装饰 id 数组）：只换装扮时不重新加载宠物；
+  减弱动态效果时装饰不晃不转。宠物改了形状或眼距，按交接说明 §2 重算。
+- **规则**在 `Packages/PetCore/Sources/PetCore/DressUp.swift`（有测试）：每天第一次打开 +1 分（App 变成 active 时，主页不提示），
+  5 分抽一次，从没有的里面均匀随机，不出重复；导览结束送生日帽（不扣分，老用户下次打开也送一次）；集齐 51 件后不再加分。
+  衣柜共用，每只宠物各记各的穿法，每个位置一件；主页、宠物详情、Dress up 的宠物都穿着。
+  积分不直接存数字，而是存「哪几天拿过分」和抽了几次，所以两台 iPhone 同一天打开只算一次、重装后先拿的那 1 分也不会盖掉 iCloud 里的。
+- **数据**存在 App Group，并写进 iCloud 键值存储（`3d.dressUp`）：天数和装饰取并集，穿法取较新的那份。
+- **页面**：宠物详情的 Dress up（够抽时有小圆点）、Pets 页顶上的 “Draw a new item”（进主宠的 Dress up）、Pets 图标的小圆点、
+  `Features/DressUp/`（衣柜、积分说明、礼物卡）。读屏、大字号（3 列、舞台 200 pt、整页可滚）、减弱动态效果按交接说明 §6 做了。
+- **装饰小图** `Resources/Assets.xcassets/decor_<id>`：和设计稿 `app-icons/` 同样的构图，按 8 倍重新渲染，
+  礼物卡上 132 pt 的大图也清楚（@3x 396 px）。5 件平面图标（翅膀、仙子翅膀、喷气背包、杠铃、铃铛项圈）同设计稿。
+- **模拟器截图用的启动参数**（只在 Debug）：`-hp3dDressUp ready|short|last|all|gift`（预置装扮数据：7 分 23 件 / 3 分 /
+  只差一件 / 全齐 / 刚走完导览的新用户）、`-hp3dRoute dress:toast`、`-hp3dDressSlot eyes`、`-hp3dDressNote points|locked`、
+  `-hp3dDressGift YES`（抽一次，弹礼物盒）、`-hp3dGiftOpen YES`（礼物盒自己打开）。
+
 ## 首页的数据
 
 - 食物气泡：每次 ≥ 20 分钟的运动（最多两个，图标是运动类型）、≥ 1 万步、昨晚的入睡、有 Whoop 时的当天 strain。点一下入账；
@@ -194,5 +214,6 @@ PRD v0.3 §10.3「已定、还没做」分四批做，这是第 1 批「只读�
 
 ## 还没做
 
-- 小装饰品（Dress up 先藏起来了；51 件已在 PRD §5.4 定好，还没写代码）。
+- Pets 格子和分享卡上穿着装扮的宠物（现截图，第二个 Dress up PR）。
+- 8 个新表情（PRD §10.3 第 17 条）：装饰引擎吃的是同一个 `st`，换引擎后在 20 只宠物上各播一遍看装饰跟不跟得上。
 - 分享卡的 Milestone 卡、数据详情页。

@@ -29,12 +29,17 @@ struct HealthPet3DApp: App {
                 .preferredColorScheme(home.appearance.colorScheme)
                 .tint(Jade.accent)
                 .task {
+                    model.dressUp.collectDailyPoint()
                     await model.refresh()
                     rescheduleNotifications()
                 }
                 .onChange(of: scenePhase) { _, phase in
-                    // Opening the app is the "check on your pet" moment, so refresh every time.
-                    if phase == .active { Task { await model.refresh() } }
+                    // Opening the app is the "check on your pet" moment, so refresh every time;
+                    // the first time on a day it is also the day's point for Dress up (PRD v0.3 §5.4).
+                    if phase == .active {
+                        model.dressUp.collectDailyPoint()
+                        Task { await model.refresh() }
+                    }
                 }
                 .onChange(of: model.sleepSchedule) { rescheduleNotifications() }
                 .onChange(of: model.mainPetID) { rescheduleNotifications() }
@@ -50,7 +55,7 @@ struct HealthPet3DApp: App {
 }
 
 enum Route: Hashable {
-    case today, pets, lockedPets, pet(String), share, memories, settings
+    case today, pets, lockedPets, pet(String), dressUp(String), share, memories, settings
 }
 
 @MainActor
@@ -73,6 +78,7 @@ struct RootView: View {
                     case .pets: PetsScreen()
                     case .lockedPets: LockedPetsScreen()
                     case .pet(let id): PetDetailScreen(petID: id)
+                    case .dressUp(let id): DressUpScreen(petID: id)
                     case .share: ShareScreen()
                     case .memories: MemoriesScreen()
                     case .settings: SettingsScreen()
@@ -89,7 +95,7 @@ struct RootView: View {
     }
 
     #if DEBUG
-    /// For screenshots on the simulator: `-hp3dRoute today|pets|pet:chili|share|memories|settings`.
+    /// For screenshots on the simulator: `-hp3dRoute today|pets|pet:chili|dress:chili|share|memories|settings`.
     private static func launchRoute() -> [Route] {
         guard let raw = UserDefaults.standard.string(forKey: "hp3dRoute") else { return [] }
         switch raw {
@@ -101,6 +107,10 @@ struct RootView: View {
         case "settings": return [.settings]
         default:
             if raw.hasPrefix("pet:") { return [.pets, .pet(String(raw.dropFirst(4)))] }
+            if raw.hasPrefix("dress:") {
+                let id = String(raw.dropFirst(6))
+                return [.pets, .pet(id), .dressUp(id)]
+            }
             return []
         }
     }

@@ -40,6 +40,9 @@ struct PetStageConfig: Equatable, Encodable {
     /// Filled in by `PetStage` from the system setting each time the config is sent.
     var calm = false
     var interactive = true
+    /// The decorations the pet wears (PRD v0.3 §5.4), in slot order; changing them doesn't
+    /// mount the pet again.
+    var decor: [String] = []
     /// The pet's 100 × 100 box inside the web view: x and size as fractions of the width, y of the height.
     var box = Box(x: 0.19, y: 0.245, size: 0.62)
 
@@ -177,7 +180,8 @@ final class PetStage {
 
     /// 醒来: only for the first open of the day.
     func morning() { run("Pet.morning()") }
-    /// cheer, starry, proud, hop, love, cheerup, confused: plays to the end.
+    /// cheer, starry, proud, hop, love, cheerup, confused: plays to the end (proud = 骄傲挺胸, when
+    /// a decoration goes on).
     func celebrate(_ id: String) { run("Pet.celebrate('\(id)')") }
     func play(_ id: String) { run("Pet.play('\(id)')") }
     /// A food bubble reached the pet's mouth.
