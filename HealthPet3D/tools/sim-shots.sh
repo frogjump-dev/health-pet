@@ -1,5 +1,5 @@
 #!/bin/bash
-# Screenshots of HealthPet 3D on the iPhone 18 Pro simulator, without opening Simulator.app.
+# Screenshots of Ovenpals (the HealthPet3D target) on the iPhone 18 Pro simulator, without opening Simulator.app.
 # Usage: HealthPet3D/tools/sim-shots.sh <simulator udid> <output folder> [all|extra]
 #   extra = only parts 4 and 5 (first-open steps, share cards, page ends, Toast's page, the tour,
 #           the tap-to-explain notes)
@@ -11,7 +11,7 @@ UDID="$1"
 OUT="$2"
 ONLY="${3:-all}"
 APP_PATH="build/dd/Build/Products/Debug-iphonesimulator/HealthPet3D.app"
-BUNDLE="com.healthpet.app3d"
+BUNDLE="com.ovenpals.app"
 mkdir -p "$OUT"
 
 shot() { xcrun simctl io "$UDID" screenshot --type=png "$OUT/$1.png" >/dev/null 2>&1 && echo "shot $1"; }

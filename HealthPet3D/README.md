@@ -1,6 +1,6 @@
 # HealthPet 3D（3D方案 · 测试版）
 
-现在仓库里唯一的 App（Bundle ID `com.healthpet.app3d`，桌面名字「Ovenpals」；HealthPet 只是内部代号，target 和目录名还叫 HealthPet3D）。2D 版 HealthPet 已在 2026-11-08 停用，见仓库根目录 README。
+现在仓库里唯一的 App（Bundle ID `com.ovenpals.app`，桌面名字「Ovenpals」；HealthPet 只是内部代号，target 和目录名还叫 HealthPet3D）。2D 版 HealthPet 已在 2026-11-08 停用，见仓库根目录 README。
 界面是最终版 v3「干净版」· Mountain Jade 配色（白天）/ 森林夜（黑夜），宠物是 3D方案 的切片宠物，带 26 个表情。
 
 ## 在 Mac 上跑起来
@@ -163,6 +163,27 @@ PRD v0.3 §10.3「已定、还没做」分四批做，这是第 1 批「只读�
 - **健康权限说明**：写入那条改成 “Ovenpals does not write to Apple Health.”。读取那条和首次打开的 Heart rate 一行先不动
   （2026-11-12 用户定：HRV / 静息心率照读，文字不改）。
 - 服务器出错时的提示里的 HealthPet 也换成 Ovenpals。
+
+### 第 4 批：Bundle ID、App Group、iCloud 备份（2026-11-12）
+
+- **Bundle ID 换成 `com.ovenpals.app`**（`project.yml`，`bundleIdPrefix` 也改成 `com.ovenpals`；`tools/sim-shots.sh` 跟着改）。
+  第一次传 TestFlight 之后就不能再改。模拟器上它算一个新 App：旧的 com.healthpet.app3d 那份数据不会带过来，可以删掉旧 App。
+- **数据搬进 App Group `group.com.ovenpals.app`**（`Store/AppGroup.swift`）：宠物、入账流水、主宠、入睡目标这些都存在这里，
+  以后的主屏小组件读同一份。首次打开、导览、外观、通知开关、时间格式还留在 App 自己的设置里（小组件用不到，截图脚本在启动时设置它们）。
+  打包时没有 App Group 能力就退回 App 自己的设置；App 自己的设置里已有的数据会搬一次。
+- **iCloud 键值备份**：领养日、Memories、累计自律周、每只宠物的活动日（= 经验）、请假、「手表记错了」、入账流水，每次保存都同时写进
+  iCloud（`PetStore` / `CreditBook` 的 `mergeFromCloud` / `pushToCloud`，`AppModel.syncCloud`）。不需要登录界面；
+  重装或换新 iPhone 后，iCloud 的数据一到就合并进来：只加不减，领养日取更早的那天。最近 30 天的健康快照不备份，重新从 Apple 健康读。
+  键值存储一共 1 MB，入账流水最多 1,500 行，大约 300 KB。
+
+**传 TestFlight 之前要做的（需要付费开发者账号，留给「测试版 App 制作」）**
+
+1. 在 developer.apple.com 的 Identifiers 里注册 App ID `com.ovenpals.app`，勾选 HealthKit、iCloud（只要 Key-value storage，
+   不需要 CloudKit 容器）、App Groups；再新建 App Group `group.com.ovenpals.app`，并勾到这个 App ID 上。
+2. 把 `project.yml` 的 `DEVELOPMENT_TEAM` 填成团队 ID，重新 `xcodegen generate`，Xcode 自动签名会生成描述文件。
+3. 在 App Store Connect 用同一个 Bundle ID 建 App，名字 Ovenpals。
+4. 装上之后看一眼：Settings 能打开，重装后 Memories 和宠物等级还在（等 iCloud 下载完，通常几秒到一分钟）。
+   免费的个人团队签不了 iCloud 和 App Group，所以 USB 直装也要用付费团队。
 
 ## 首页的数据
 
