@@ -644,10 +644,17 @@ struct HomeScreen: View {
     #if DEBUG
     /// For screenshots on the simulator, once the pet is ready:
     /// -hp3dFeed all (or a bubble kind: workout, steps, night, load) eats the bubbles one by one;
-    /// -hp3dTour 1|2|3|tryit shows that tour step; -hp3dNote asleep|slept|week|day opens that note.
+    /// -hp3dTour 1|2|3|tryit shows that tour step; -hp3dNote asleep|slept|week|day opens that note;
+    /// -hp3dAskBedtime YES shows the pet's one question about the bedtime reminder.
     private func debugLaunch() async {
         guard stage.isReady else { return }
         let defaults = UserDefaults.standard
+        if defaults.bool(forKey: "hp3dAskBedtime") {
+            try? await Task.sleep(for: .seconds(3))
+            lineTask?.cancel()
+            line = nil
+            withAnimation(.spring(duration: 0.3)) { askingBedtime = true }
+        }
         if let step = defaults.string(forKey: "hp3dTour") {
             try? await Task.sleep(for: .seconds(1.5))
             tourTask?.cancel()

@@ -52,8 +52,13 @@ struct TodayScreen: View {
             }
         }
         #if DEBUG
-        // For screenshots: -hp3dBookAll YES eats today's food, to show the tags once booked.
+        // For screenshots: -hp3dBookAll YES eats today's food, to show the tags once booked;
+        // -hp3dFixSheet YES opens 「Watch got it wrong?」.
         .task {
+            if UserDefaults.standard.bool(forKey: "hp3dFixSheet") {
+                try? await Task.sleep(for: .seconds(1))
+                fixing = true
+            }
             guard UserDefaults.standard.bool(forKey: "hp3dBookAll") else { return }
             try? await Task.sleep(for: .seconds(1.5))
             for bubble in model.foodBubbles { _ = model.book(bubble.credit) }

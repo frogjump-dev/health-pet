@@ -4,11 +4,13 @@ import PetCore
 
 /// Everything about the pet that lives on this phone: adoption day, memories, finished 自律周,
 /// the activity log, leave days, and the last health snapshots (so the pet shows up instantly, offline too).
-/// Backed by UserDefaults for now; swap the storage here when it outgrows that.
+/// Backed by UserDefaults (the App Group's, see `AppGroup`). Everything but the snapshot cache is
+/// also kept in iCloud's key-value store, so a reinstall or a new iPhone gets it back (PRD v0.3 §9).
 @MainActor
 @Observable
 final class PetStore {
-    let adoptedOn: Date
+    /// The earliest adoption day this phone or iCloud knows.
+    private(set) var adoptedOn: Date
     private(set) var memories: [MemoryEvent]
     private(set) var cachedSnapshots: [HealthSnapshot]
     /// Starts of every finished 自律周. Kept forever: titles and double experience only go up.
@@ -24,6 +26,8 @@ final class PetStore {
     private(set) var sleepFixes: [Date: Date]
 
     private let defaults: UserDefaults
+    /// iCloud key-value backup; nil = none (tests).
+    private let cloud: NSUbiquitousKeyValueStore?
 
     private enum Keys {
         static let adoptedOn = "adoptedOn"
@@ -35,14 +39,19 @@ final class PetStore {
         static let sleepFixes = "sleepFixes"
     }
 
-    init(defaults: UserDefaults = .standard) {
+    /// What goes to iCloud: everything that can't be read from Apple Health again.
+    private static let backedUp = [Keys.adoptedOn, Keys.memories, Keys.disciplinedWeeks, Keys.activityLog, Keys.leaveDays, Keys.sleepFixes]
+
+    init(defaults: UserDefaults = AppGroup.defaults, cloud: NSUbiquitousKeyValueStore? = nil) {
         self.defaults = defaults
+        self.cloud = cloud
 
         if let saved = defaults.object(forKey: Keys.adoptedOn) as? Date {
             adoptedOn = saved
         } else {
-            adoptedOn = Date()
-            defaults.set(adoptedOn, forKey: Keys.adoptedOn)
+            let now = Date()
+            adoptedOn = now
+            defaults.set(now, forKey: Keys.adoptedOn)
         }
         memories = Self.decode([MemoryEvent].self, defaults.data(forKey: Keys.memories)) ?? []
         cachedSnapshots = Self.decode([HealthSnapshot].self, defaults.data(forKey: Keys.snapshots)) ?? []
@@ -66,7 +75,7 @@ final class PetStore {
         updated[morning] = onset
         guard updated != sleepFixes else { return }
         sleepFixes = updated
-        defaults.set(try? JSONEncoder().encode(updated), forKey: Keys.sleepFixes)
+        save(updated, Keys.sleepFixes)
     }
 
     // MARK: - Leave days
@@ -78,7 +87,7 @@ final class PetStore {
         if on { updated.insert(morning) } else { updated.remove(morning) }
         guard updated != leaveDays else { return }
         leaveDays = updated
-        defaults.set(try? JSONEncoder().encode(updated), forKey: Keys.leaveDays)
+        save(updated, Keys.leaveDays)
     }
 
     // MARK: - Days together
@@ -95,7 +104,7 @@ final class PetStore {
     func addMemories(_ new: [MemoryEvent]) {
         guard !new.isEmpty else { return }
         memories.append(contentsOf: new)
-        defaults.set(try? JSONEncoder().encode(memories), forKey: Keys.memories)
+        save(memories, Keys.memories)
     }
 
     /// Adds weeks that counted. Weeks are never removed, even if later data looks different.
@@ -103,7 +112,7 @@ final class PetStore {
         let updated = disciplinedWeeks.union(weekStarts)
         guard updated != disciplinedWeeks else { return }
         disciplinedWeeks = updated
-        defaults.set(try? JSONEncoder().encode(updated), forKey: Keys.disciplinedWeeks)
+        save(updated, Keys.disciplinedWeeks)
     }
 
     /// Adds days' activities. Nothing is ever removed, even if later data looks different.
@@ -114,7 +123,7 @@ final class PetStore {
         }
         guard updated != activityLog else { return }
         activityLog = updated
-        defaults.set(try? JSONEncoder().encode(updated), forKey: Keys.activityLog)
+        save(updated, Keys.activityLog)
     }
 
     func cache(_ snapshots: [HealthSnapshot]) {
@@ -122,7 +131,78 @@ final class PetStore {
         defaults.set(try? JSONEncoder().encode(snapshots), forKey: Keys.snapshots)
     }
 
+    // MARK: - iCloud
+
+    /// Takes in what iCloud holds that this phone doesn't (after a reinstall, or from another
+    /// iPhone): the earlier adoption day, and every week, pet day, leave night, fixed night and memory
+    /// either side has. Nothing is ever taken away. Returns whether anything changed here.
+    @discardableResult
+    func mergeFromCloud() -> Bool {
+        guard let cloud else { return false }
+        var changed = false
+        if let theirs = cloud.object(forKey: Keys.adoptedOn) as? Date, theirs < adoptedOn {
+            adoptedOn = theirs
+            defaults.set(theirs, forKey: Keys.adoptedOn)
+            changed = true
+        }
+        if let theirs = Self.decode([MemoryEvent].self, cloud.data(forKey: Keys.memories)) {
+            let known = Set(memories.map(\.id))
+            let new = theirs.filter { !known.contains($0.id) }
+            if !new.isEmpty {
+                memories = (memories + new).sorted { $0.day < $1.day }
+                save(memories, Keys.memories, toCloud: false)
+                changed = true
+            }
+        }
+        if let theirs = Self.decode(Set<Date>.self, cloud.data(forKey: Keys.disciplinedWeeks)), !theirs.isSubset(of: disciplinedWeeks) {
+            disciplinedWeeks.formUnion(theirs)
+            save(disciplinedWeeks, Keys.disciplinedWeeks, toCloud: false)
+            changed = true
+        }
+        if let names = Self.decode([Date: [String]].self, cloud.data(forKey: Keys.activityLog)) {
+            var updated = activityLog
+            for (day, list) in names {
+                updated[day, default: []].formUnion(list.compactMap(Activity.init(rawValue:)))
+            }
+            updated = updated.filter { !$0.value.isEmpty }
+            if updated != activityLog {
+                activityLog = updated
+                save(updated, Keys.activityLog, toCloud: false)
+                changed = true
+            }
+        }
+        if let theirs = Self.decode(Set<Date>.self, cloud.data(forKey: Keys.leaveDays)), !theirs.isSubset(of: leaveDays) {
+            leaveDays.formUnion(theirs)
+            save(leaveDays, Keys.leaveDays, toCloud: false)
+            changed = true
+        }
+        if let theirs = Self.decode([Date: Date].self, cloud.data(forKey: Keys.sleepFixes)) {
+            let updated = sleepFixes.merging(theirs) { mine, _ in mine }
+            if updated != sleepFixes {
+                sleepFixes = updated
+                save(updated, Keys.sleepFixes, toCloud: false)
+                changed = true
+            }
+        }
+        return changed
+    }
+
+    /// Puts everything backed up into iCloud as this phone has it (after a merge, both sides agree).
+    func pushToCloud() {
+        guard let cloud else { return }
+        for key in Self.backedUp {
+            cloud.set(defaults.object(forKey: key), forKey: key)
+        }
+    }
+
     // MARK: - Helpers
+
+    /// Saves `value` here and, for the backed-up keys, in iCloud too.
+    private func save<T: Encodable>(_ value: T, _ key: String, toCloud: Bool = true) {
+        let data = try? JSONEncoder().encode(value)
+        defaults.set(data, forKey: key)
+        if toCloud, Self.backedUp.contains(key) { cloud?.set(data, forKey: key) }
+    }
 
     private static func decode<T: Decodable>(_ type: T.Type, _ data: Data?) -> T? {
         data.flatMap { try? JSONDecoder().decode(type, from: $0) }

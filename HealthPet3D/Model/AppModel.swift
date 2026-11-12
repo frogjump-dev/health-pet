@@ -84,6 +84,7 @@ final class AppModel {
     private let whoopConnector = WhoopConnector()
     private let backend: Backend?
     private let defaults: UserDefaults
+    @ObservationIgnored private var cloudObserver: NSObjectProtocol?
 
     private enum Keys {
         static let dataMode = "dataMode"
@@ -93,11 +94,14 @@ final class AppModel {
         static let sleepSchedule = "sleepSchedule"
     }
 
-    init(defaults: UserDefaults = .standard, backend: Backend? = Backend.shared) {
+    /// `defaults`: the App Group's (the widget reads them later). `cloud`: the iCloud key-value
+    /// backup of what Apple Health can't give back (PRD v0.3 §9); nil = none.
+    init(defaults: UserDefaults = AppGroup.defaults, cloud: NSUbiquitousKeyValueStore? = NSUbiquitousKeyValueStore.default,
+         backend: Backend? = Backend.shared) {
         self.defaults = defaults
         self.backend = backend
-        store = PetStore(defaults: defaults)
-        liveBook = CreditBook(defaults: defaults)
+        store = PetStore(defaults: defaults, cloud: cloud)
+        liveBook = CreditBook(defaults: defaults, cloud: cloud)
         demoBook = CreditBook(defaults: nil, history: 6)
         whoop = WhoopProvider(backend: backend)
 
@@ -120,6 +124,27 @@ final class AppModel {
 
         // Show yesterday's pet straight away; refresh() replaces it with fresh data.
         evaluate(store.cachedSnapshots, now: Date(), recordMemories: false)
+
+        if let cloud {
+            // the first download after an install, another iPhone, another iCloud account
+            cloudObserver = NotificationCenter.default.addObserver(
+                forName: NSUbiquitousKeyValueStore.didChangeExternallyNotification, object: cloud, queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor in self?.syncCloud() }
+            }
+            cloud.synchronize()
+            syncCloud()
+        }
+    }
+
+    /// Takes in what iCloud has and this phone doesn't (nothing is ever taken away), then puts
+    /// the whole lot back, so both sides agree. Without iCloud nothing happens.
+    func syncCloud() {
+        let petsChanged = store.mergeFromCloud()
+        let bookChanged = liveBook.mergeFromCloud()
+        store.pushToCloud()
+        liveBook.pushToCloud()
+        if petsChanged || bookChanged { reevaluate() }
     }
 
     // MARK: - Pets and progress (forwarded so views only talk to the model)
