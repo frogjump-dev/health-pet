@@ -175,7 +175,8 @@ struct HomeScreen: View {
     private func scene(pet: Pet3D, size: CGSize) -> some View {
         if size.width > 1, size.height > 1 {
             let layout = HomeLayout(size: size, anchors: stage.anchors(for: pet.id) ?? .standard, outfitTop: stage.outfitTop(for: pet.id))
-            let waiting = foodHidden ? [] : model.foodBubbles.filter { eating[$0.id] == nil }
+            // the bedtime question is wide and sits above the pet (and its hat): the food waits until it is answered
+            let waiting = foodHidden || askingBedtime ? [] : model.foodBubbles.filter { eating[$0.id] == nil }
             let bubbles = waiting + eating.values.sorted { $0.slot < $1.slot }
             ZStack(alignment: .topLeading) {
                 LivePet(config: stageConfig(pet: pet, box: layout.box))
