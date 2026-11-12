@@ -73,6 +73,9 @@ final class PetStage {
     private(set) var owner: UUID?
     /// Each pet's standing box, as the page measured it.
     private(set) var anchorsByPet: [String: PetAnchors] = [:]
+    /// How high each pet's outfit reaches (a tall hat, a surfboard), in the same 0–100 box as the
+    /// anchors; missing when it wears nothing.
+    private(set) var outfitTopByPet: [String: Double] = [:]
 
     @ObservationIgnored private var webView: WKWebView?
     @ObservationIgnored private var pending: [String] = []
@@ -86,6 +89,7 @@ final class PetStage {
     private init() {}
 
     func anchors(for pet: String) -> PetAnchors? { anchorsByPet[pet] }
+    func outfitTop(for pet: String) -> Double? { outfitTopByPet[pet] }
 
     // MARK: - Screens
 
@@ -223,6 +227,8 @@ final class PetStage {
             log("drawn \(pet ?? "?")")
             // a drawing of the pet shown before the latest change doesn't count
             if pet == nil || pet == config?.pet { hasDrawn = true }
+        case "outfit":
+            if let pet { outfitTopByPet[pet] = message["top"] as? Double }
         case "tap":
             lastTapMode = message["mode"] as? String ?? "awake"
             tapCount += 1
@@ -252,7 +258,7 @@ final class PetStage {
     }
 
     /// Debug builds print how long the page takes (`[pet] ready toast +640ms`) to the console.
-    fileprivate func log(_ text: String) {
+    func log(_ text: String) {
         #if DEBUG
         let ms = Int((ContinuousClock.now - loadStarted) / .milliseconds(1))
         // stderr is unbuffered, so the line is there even if the app is ended right after

@@ -174,7 +174,7 @@ struct HomeScreen: View {
     @ViewBuilder
     private func scene(pet: Pet3D, size: CGSize) -> some View {
         if size.width > 1, size.height > 1 {
-            let layout = HomeLayout(size: size, anchors: stage.anchors(for: pet.id) ?? .standard)
+            let layout = HomeLayout(size: size, anchors: stage.anchors(for: pet.id) ?? .standard, outfitTop: stage.outfitTop(for: pet.id))
             let waiting = foodHidden ? [] : model.foodBubbles.filter { eating[$0.id] == nil }
             let bubbles = waiting + eating.values.sorted { $0.slot < $1.slot }
             ZStack(alignment: .topLeading) {
@@ -722,7 +722,8 @@ struct HomeScreen: View {
         if let which = defaults.string(forKey: "hp3dFeed") {
             try? await Task.sleep(for: .seconds(9))
             guard let scene = spots["scene"] else { return }
-            let layout = HomeLayout(size: scene.size, anchors: stage.anchors(for: model.mainPet3D.id) ?? .standard)
+            let layout = HomeLayout(size: scene.size, anchors: stage.anchors(for: model.mainPet3D.id) ?? .standard,
+                                    outfitTop: stage.outfitTop(for: model.mainPet3D.id))
             for bubble in model.foodBubbles where which == "all" || bubble.credit.kind.rawValue == which {
                 // The clock time lets sim-shots.sh find this moment in its recording.
                 FileHandle.standardError.write(Data("[feed] \(bubble.id) \(Date().timeIntervalSince1970)\n".utf8))
@@ -771,6 +772,8 @@ private struct DockItem<Icon: View>: View {
 struct HomeLayout {
     let size: CGSize
     let anchors: PetAnchors
+    /// How high the outfit reaches, when it wears one (PetStage.outfitTop).
+    var outfitTop: Double?
 
     /// The pet's 100 × 100 box: about 63% of the width, feet at 87% of the height.
     var stageSide: CGFloat { min(size.width * 0.63, size.height * 0.62) }
@@ -796,7 +799,9 @@ struct HomeLayout {
         CGPoint(x: size.width / 2, y: stageRect.minY + anchors.bottom / 100 * stageSide - 4)
     }
 
-    var headTop: CGFloat { stageRect.minY + anchors.top / 100 * stageSide }
+    /// The top of the pet, or of its outfit when that reaches higher (a tall hat): the pet's line,
+    /// the bedtime question and the booking tag sit above it, never on the hat.
+    var headTop: CGFloat { stageRect.minY + min(anchors.top, outfitTop ?? anchors.top) / 100 * stageSide }
 
     /// Food bubble places (v3.3 mock): the moon top left, a workout top right, the 10k day middle
     /// left, a second workout middle right, Whoop strain top centre.

@@ -45,10 +45,14 @@ final class DressUpStore {
 
     /// "Toast, wearing Cowboy hat and Bandana" (VoiceOver).
     func wearingLabel(_ pet: Pet3D) -> String {
+        "\(pet.name), wearing \(wearing(pet) ?? "nothing yet")"
+    }
+
+    /// "Cowboy hat and Bandana"; nil when it wears nothing.
+    func wearing(_ pet: Pet3D) -> String? {
         let names = outfit(for: pet.id).compactMap { Decor.with(id: $0)?.name }
-        guard !names.isEmpty else { return "\(pet.name), wearing nothing yet" }
-        let list = names.count == 1 ? names[0] : names.dropLast().joined(separator: ", ") + " and " + names.last!
-        return "\(pet.name), wearing \(list)"
+        guard let last = names.last else { return nil }
+        return names.count == 1 ? last : names.dropLast().joined(separator: ", ") + " and " + last
     }
 
     // MARK: - Changes
@@ -147,7 +151,10 @@ final class DressUpStore {
         d.pointDays.insert(DressUp.dayKey(Date()))
         d.pointDays.remove("seed-0")
         state = d
-        defaults.set(try? JSONEncoder().encode(d), forKey: Self.key)
+        // into iCloud too, or the merge at launch would bring back an earlier run's wardrobe
+        let data = try? JSONEncoder().encode(d)
+        defaults.set(data, forKey: Self.key)
+        cloud?.set(data, forKey: Self.key)
     }
     #endif
 }

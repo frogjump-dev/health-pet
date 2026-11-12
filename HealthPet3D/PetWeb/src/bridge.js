@@ -79,6 +79,29 @@ function mount() {
   run();
   // two frames later the pet is on screen: the app takes away the still picture it showed meanwhile
   requestAnimationFrame(() => requestAnimationFrame(() => post({ type: 'drawn', pet: p.def.id })));
+  reportOutfit();
+}
+
+/** How high the outfit reaches (a tall hat, a surfboard on the back), in the stage's 0–100 box
+ *  like the anchors; null when it wears nothing. The app keeps its speech bubble above it. */
+function outfitTop() {
+  const layer = pet?.host.querySelector('[data-decor]');
+  if (!layer || !(cfg.decor || []).length) return null;
+  let top = Infinity;
+  for (const el of layer.querySelectorAll('path, circle, ellipse, rect, polygon')) {
+    // a stripe painted on a piece is wider than it and clipped to it: the piece itself counts
+    if (el.closest('[clip-path]')) continue;
+    const b = el.getBoundingClientRect();
+    if (b.width > 0 && b.height > 0) top = Math.min(top, b.top);
+  }
+  if (!isFinite(top)) return null;
+  const r = stage.getBoundingClientRect();
+  return r.height > 0 ? Math.round(((top - r.top) / r.height) * 1000) / 10 : null;
+}
+/** Two frames after an outfit is put on (it is drawn by then), tell the app how high it reaches. */
+function reportOutfit() {
+  const id = cfg.pet;
+  requestAnimationFrame(() => requestAnimationFrame(() => { if (id === cfg.pet) post({ type: 'outfit', pet: id, top: outfitTop() }); }));
 }
 
 /** A posed, motionless frame, for the pictures the app shows in grids and share cards. */
@@ -213,6 +236,7 @@ window.Pet = {
     placeStage();
     if (outfit) {
       decor.set(cfg.decor);
+      reportOutfit();
       // a still picture is drawn once: draw it again with the new outfit, then tell the app it is on screen
       if (cfg.still) {
         drawStill(cfg.still);
@@ -243,6 +267,16 @@ window.Pet = {
     const [mx, my] = mouthPx();
     feeds.push({ t: 0, x: (o.x ?? 0.5) * window.innerWidth, y: (o.y ?? 0.3) * window.innerHeight, mx, my,
       then: o.then ?? 'giggle', bites: [0.81, 0.91, 1.01], done: false });
+  },
+  /**
+   * The app's pictures of dressed pets (PetSnapper, a second hidden page): show this still on
+   * `bg`, then say `shot` with `token` once it is on screen.
+   */
+  shoot(o = {}, token = '', bg = 'transparent') {
+    document.documentElement.style.background = bg;
+    this.configure(o);
+    if (cfg.still) drawStill(cfg.still);
+    requestAnimationFrame(() => requestAnimationFrame(() => post({ type: 'shot', token })));
   },
   /** Something happened around the pet (a scroll, a button): keeps it from dozing off. */
   activity() { dir?.activity(); },

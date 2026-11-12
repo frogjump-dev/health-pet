@@ -64,6 +64,16 @@ struct DressUpScreen: View {
         }
         .animation(.easeOut(duration: 0.25), value: gift)
         .sensoryFeedback(.selection, trigger: wardrobe.outfit(for: pet.id))
+        // leaving: the new look's pictures for the Pets tile and share cards are taken now
+        .onDisappear {
+            let outfit = wardrobe.outfit(for: pet.id)
+            guard !outfit.isEmpty else { return }
+            Task {
+                await PetSnapper.shared.prepare([.neutral, .happy, .proud].map {
+                    PetSnapper.Key(pet: pet.id, decor: outfit, pose: $0)
+                })
+            }
+        }
         #if DEBUG
         .task { await debugLaunch(pet) }
         #endif
@@ -300,7 +310,8 @@ struct DressUpScreen: View {
                                        : "\(wardrobe.collected) of \(Decor.all.count) collected")
                             .scaledFont(13, .medium)
                             .foregroundStyle(Jade.ink2)
-                            .lineLimit(2)
+                            // one line beside "+1 today" (it shrinks a little rather than wrap); two at large text
+                            .lineLimit(large ? 2 : 1)
                             .minimumScaleFactor(0.8)
                     }
                 }
