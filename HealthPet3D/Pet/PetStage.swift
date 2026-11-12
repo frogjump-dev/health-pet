@@ -359,7 +359,9 @@ struct LivePet: View {
             ZStack(alignment: .topLeading) {
                 PetStageView(owner: owner, config: config)
                 if !(stage.hasDrawn && stage.owner == owner), let pet = Pet3D.with(id: config.pet) {
-                    PetPicture(pet: pet)
+                    // dressed when its picture was already taken (Pets, Dress up); never taken from
+                    // here, while the living pet's own page is still loading
+                    PetPicture(pet: pet, decor: config.decor, takesPicture: false)
                         .frame(width: side, height: side)
                         .offset(x: CGFloat(config.box.x) * geo.size.width, y: CGFloat(config.box.y) * geo.size.height)
                         .allowsHitTesting(false)

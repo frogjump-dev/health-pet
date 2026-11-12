@@ -101,6 +101,8 @@ struct PetPicture: View {
     var proud = false
     /// What the pet wears ([] = the bundled still).
     var decor: [String] = []
+    /// false: show the dressed picture only if it was already taken (PetSnapper's cache).
+    var takesPicture = true
 
     private var pose: PetSnapper.Pose { proud ? .proud : happy ? .happy : .neutral }
 
@@ -123,7 +125,7 @@ struct PetPicture: View {
                 .overlay { if let dressed { DressedPicture(image: dressed) } }
                 .accessibilityLabel(pet.name)
                 .task(id: key) {
-                    if !decor.isEmpty { await PetSnapper.shared.picture(for: key) }
+                    if takesPicture, !decor.isEmpty { await PetSnapper.shared.picture(for: key) }
                 }
         }
     }
