@@ -10,8 +10,9 @@ import WebKit
 /// Each picture is taken twice, on black and on white, and the two are turned into one picture
 /// with a transparent background, so it can stand on any card and overlap its neighbours.
 /// Pictures are cached in Caches/PetStills by pet, outfit and pose; one is taken at a time.
-/// A web view that is not on screen may not draw: this one sits in the key window, almost fully
-/// transparent. If a picture can't be taken, the bundled still stays (check on a real device).
+/// A web view that is not in a window may not draw, and iOS takes a web view's snapshot with the
+/// view's own opacity: this one sits fully opaque in the key window, behind the app's own (opaque)
+/// screens. If a picture can't be taken, the bundled still stays (check on a real device).
 @MainActor
 @Observable
 final class PetSnapper {
@@ -51,6 +52,8 @@ final class PetSnapper {
     @ObservationIgnored private var waiting: [Key: [CheckedContinuation<UIImage?, Never>]] = [:]
     @ObservationIgnored private var busy = false
     @ObservationIgnored private var webView: WKWebView?
+    /// Holds the web view at the back of the window, under the app's screens.
+    @ObservationIgnored private var holder: UIView?
     @ObservationIgnored private var handler: SnapHandler?
     @ObservationIgnored private var ready = false
     /// Counts page loads, so a load's time-out never answers a later one.
@@ -120,21 +123,22 @@ final class PetSnapper {
 
     private func shoot(_ key: Key) async -> UIImage? {
         guard await loadPage(for: key), let webView else { return nil }
-        let config = PetShot(pet: key.pet, decor: key.decor, still: key.pose.rawValue)
+        let config = Self.shot(key)
         guard await draw(config, background: "#000"), let black = await snapshot(webView),
               await draw(config, background: "#FFF"), let white = await snapshot(webView) else {
             failed = true
             PetStage.shared.log("snapper: no picture of \(key.file); the bundled still stays")
             return nil
         }
-        guard let matte = await Task.detached(priority: .utility, operation: { Self.matte(black: black, white: white) }).value else {
+        let result = await Task.detached(priority: .utility, operation: { Self.matte(black: black, white: white) }).value
+        guard let matte = result.image else {
             failed = true
-            PetStage.shared.log("snapper: the picture of \(key.file) came out empty; the bundled still stays")
+            PetStage.shared.log("snapper: the picture of \(key.file) came out empty (\(result.note)); the bundled still stays")
             return nil
         }
         let image = UIImage(cgImage: matte)
         save(image, for: key)
-        PetStage.shared.log("snapper: took \(key.file)")
+        PetStage.shared.log("snapper: took \(key.file) (\(result.note))")
         return image
     }
 
@@ -182,7 +186,7 @@ final class PetSnapper {
             self.handler = handler
             let content = WKUserContentController()
             content.add(handler, name: "pet")
-            let initial = PetShot(pet: key.pet, decor: key.decor, still: key.pose.rawValue)
+            let initial = Self.shot(key)
             content.addUserScript(WKUserScript(source: "window.PET_INIT = \(PetStage.json(initial));",
                                                injectionTime: .atDocumentStart, forMainFrameOnly: true))
             let configuration = WKWebViewConfiguration()
@@ -194,9 +198,15 @@ final class PetSnapper {
             web.scrollView.isScrollEnabled = false
             web.scrollView.contentInsetAdjustmentBehavior = .never
             web.isUserInteractionEnabled = false
-            web.alpha = 0.01
             web.accessibilityElementsHidden = true
-            window.addSubview(web)
+            // At the back of the window, fully opaque: the app's screens (opaque canvas) cover it. A
+            // nearly transparent web view draws, but its snapshot comes out nearly transparent too.
+            let holder = UIView(frame: web.frame)
+            holder.isUserInteractionEnabled = false
+            holder.accessibilityElementsHidden = true
+            holder.addSubview(web)
+            window.insertSubview(holder, at: 0)
+            self.holder = holder
             webView = web
             ready = false
             loads += 1
@@ -238,6 +248,8 @@ final class PetSnapper {
     }
 
     private func tearDown() {
+        holder?.removeFromSuperview()
+        holder = nil
         webView?.removeFromSuperview()
         webView?.configuration.userContentController.removeAllScriptMessageHandlers()
         webView = nil
@@ -282,10 +294,13 @@ final class PetSnapper {
     /// One picture of the same frame on black and on white gives each pixel's coverage
     /// (white − black = how much background shows through) and its colour (the black one is
     /// already the colour times its coverage).
-    nonisolated static func matte(black: CGImage, white: CGImage) -> CGImage? {
+    /// nil image when the two don't make a picture; `note` says why, for the log.
+    nonisolated static func matte(black: CGImage, white: CGImage) -> (image: CGImage?, note: String) {
         let w = black.width, h = black.height
         guard w > 0, h > 0, white.width == w, white.height == h,
-              let space = CGColorSpace(name: CGColorSpace.sRGB) else { return nil }
+              let space = CGColorSpace(name: CGColorSpace.sRGB) else {
+            return (nil, "sizes \(black.width)×\(black.height) and \(white.width)×\(white.height)")
+        }
         let info = CGImageAlphaInfo.premultipliedLast.rawValue
         func pixels(_ image: CGImage) -> [UInt8]? {
             var data = [UInt8](repeating: 0, count: w * h * 4)
@@ -297,12 +312,18 @@ final class PetSnapper {
             }
             return drawn ? data : nil
         }
-        guard let b = pixels(black), let wh = pixels(white) else { return nil }
+        guard let b = pixels(black), let wh = pixels(white) else { return (nil, "no bitmap") }
         var out = [UInt8](repeating: 0, count: w * h * 4)
         var solid = 0
+        // average brightness and coverage of each picture, for the log when it fails
+        var sumB = 0, sumW = 0, sumBA = 0, sumWA = 0
         var i = 0
         while i < out.count {
             let r = Int(b[i]), g = Int(b[i + 1]), bl = Int(b[i + 2])
+            sumB += r + g + bl
+            sumW += Int(wh[i]) + Int(wh[i + 1]) + Int(wh[i + 2])
+            sumBA += Int(b[i + 3])
+            sumWA += Int(wh[i + 3])
             let through = (Int(wh[i]) - r + Int(wh[i + 1]) - g + Int(wh[i + 2]) - bl) / 3
             let alpha = min(255, max(255 - through, r, g, bl))
             out[i] = UInt8(r)
@@ -314,12 +335,22 @@ final class PetSnapper {
         }
         // The pet fills a good part of the frame. Next to nothing means the page wasn't drawn; all of
         // it means the background never changed between the two pictures. Neither is a picture.
-        let share = Double(solid) / Double(w * h)
-        guard share > 0.03, share < 0.9 else { return nil }
-        guard let provider = CGDataProvider(data: Data(out) as CFData) else { return nil }
-        return CGImage(width: w, height: h, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: w * 4, space: space,
-                       bitmapInfo: CGBitmapInfo(rawValue: info), provider: provider, decode: nil,
-                       shouldInterpolate: true, intent: .defaultIntent)
+        let n = Double(w * h)
+        let share = Double(solid) / n
+        let note = String(format: "%ld×%ld, solid %.1f%%, black %.0f/%.0f, white %.0f/%.0f (colour/alpha 0–255)",
+                          w, h, share * 100, Double(sumB) / n / 3, Double(sumBA) / n, Double(sumW) / n / 3, Double(sumWA) / n)
+        guard share > 0.03, share < 0.9 else { return (nil, note) }
+        guard let provider = CGDataProvider(data: Data(out) as CFData) else { return (nil, note) }
+        let image = CGImage(width: w, height: h, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: w * 4, space: space,
+                            bitmapInfo: CGBitmapInfo(rawValue: info), provider: provider, decode: nil,
+                            shouldInterpolate: true, intent: .defaultIntent)
+        return (image, note)
+    }
+
+    /// What the hidden page draws for `key`.
+    private static func shot(_ key: Key) -> PetShot {
+        PetShot(pet: key.pet, decor: key.decor, still: key.pose.rawValue,
+                box: PetStageConfig.Box(x: box.x, y: box.y, size: box.size))
     }
 }
 
@@ -332,7 +363,7 @@ private struct PetShot: Encodable {
     var shadow = false
     var rug = false
     var dark = false
-    var box = PetStageConfig.Box(x: PetSnapper.box.x, y: PetSnapper.box.y, size: PetSnapper.box.size)
+    let box: PetStageConfig.Box
 }
 
 /// Hears the hidden page; kept apart because WebKit retains its message handlers.
