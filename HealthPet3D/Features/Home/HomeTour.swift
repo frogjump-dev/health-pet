@@ -7,10 +7,11 @@ import SwiftUI
 enum TourStep: Int, CaseIterable {
     case bubbles = 1, records, dock, tryIt
 
-    var line: String {
+    /// Whoop users hear about their recovery, Apple Watch users about how long they slept (PRD v0.3).
+    func line(whoop: Bool) -> String {
         switch self {
         case .bubbles: "Today’s snacks. Your walks, workouts and sleep grow them. Tap one and I’ll eat it."
-        case .records: "Where it goes: last night’s bedtime, how rested you are, and this week’s tally. 3 workouts + 5 early nights make a disciplined week."
+        case .records: "Where it goes: last night’s bedtime, \(whoop ? "how rested you are" : "how long you slept"), and this week’s tally. 3 workouts + 5 early nights make a disciplined week."
         case .dock: "Pets keeps everyone you’ve met. Today has the numbers. Memories keeps what you’ve earned."
         case .tryIt: ""
         }
@@ -26,6 +27,8 @@ struct TourOverlay: View {
     /// Where the 「…」 button is: Skip takes its place.
     let skipAt: CGRect?
     let petName: String
+    /// Whoop user: step 2 talks about recovery instead of sleep length.
+    var whoop = false
     let next: () -> Void
     let skip: () -> Void
 
@@ -67,7 +70,7 @@ struct TourOverlay: View {
                 .font(.rounded(11, .heavy))
                 .tracking(0.8)
                 .foregroundStyle(Jade.accent)
-            Text(step.line)
+            Text(step.line(whoop: whoop))
                 .font(.rounded(15, .semibold))
                 .foregroundStyle(Jade.ink)
                 .lineSpacing(2)

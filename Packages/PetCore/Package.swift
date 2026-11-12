@@ -1,5 +1,5 @@
 // swift-tools-version: 5.9
-// PetCore: platform-independent pet logic (health models, baselines, pet state, memories).
+// PetCore: platform-independent pet logic (health models, discipline rules, credits, memories).
 // No HealthKit / SwiftUI imports here, so it builds and tests on macOS, iOS and Linux.
 import PackageDescription
 

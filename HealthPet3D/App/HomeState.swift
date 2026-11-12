@@ -150,9 +150,10 @@ final class HomeState {
 
     // MARK: - 自律周
 
-    /// True once per week, the first time the week counts.
+    /// True once per week, the first time the week counts. Never for a week before the last one
+    /// celebrated, so last week's late cheer (PRD v0.3 §4.4) can't come after this week's.
     func takeWeekCelebration(weekStart: Date) -> Bool {
-        guard celebratedWeek != weekStart else { return false }
+        if let celebratedWeek, weekStart <= celebratedWeek { return false }
         celebratedWeek = weekStart
         defaults.set(weekStart, forKey: Keys.celebratedWeek)
         return true

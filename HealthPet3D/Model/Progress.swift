@@ -54,9 +54,12 @@ extension AppModel {
     // MARK: - Share identity
 
     /// "Early-to-bed Runner": the share card's title (PRD v0.2 §6 / F).
-    var identityTitle: String {
+    var identityTitle: String { identityTitle(onTimeNights: week?.onTimeNights ?? 0) }
+
+    /// The title for a week with `onTimeNights` on-time nights (last week's card uses last week's).
+    func identityTitle(onTimeNights: Int) -> String {
         ShareIdentity.title(progress: activityProgress, mainActivity: mainPet3D.activity,
-                            onTimeNightsThisWeek: week?.onTimeNights ?? 0)
+                            onTimeNightsThisWeek: onTimeNights)
     }
 
     /// The main pet in the middle, the two highest-level other pets beside it (left, right).
@@ -101,11 +104,23 @@ extension AppModel {
         return !yesterdayDone && !sleptOnTime && !lastNightIsLeave
     }
 
-    /// Whoop's own recovery is behind the rest bar (labelled WHOOP).
-    var restIsWhoop: Bool { today?.vendorRecovery != nil }
+    /// Whoop is linked (or its data is in): home shows Whoop's recovery bar and Today a Recovery
+    /// row. Apple Watch users get last night's sleep instead; nothing is estimated (PRD v0.3).
+    var isWhoopUser: Bool {
+        (dataMode == .live && whoopStatus == .connected) || today?.vendorRecovery != nil
+    }
 
-    /// 0–100: Whoop recovery or our Rest estimate. nil = nothing to go on, the bar stays empty.
-    var rest: Double? { today.flatMap { DailyMetrics.recovery($0, baseline: baseline) } }
+    /// Said when 30 days hold no sleep at all (no watch at night): first open and the Asleep notes.
+    static let noSleepLine = "I can’t see your sleep yet. Wear your watch to bed and the moon shows up."
+
+    /// Whoop's recovery today, 0–100, as Whoop scored it. nil = not scored yet.
+    var whoopRecovery: Double? { today?.vendorRecovery }
+
+    /// Nothing from Apple Health for a few days although it was connected: perhaps access was
+    /// turned off in the Health app. Settings says where to turn it on again.
+    var appleHealthQuiet: Bool {
+        dataMode == .live && appleHealthConnected && daysWithoutData >= 3
+    }
 }
 
 extension AppModel {

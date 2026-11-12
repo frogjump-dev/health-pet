@@ -1,7 +1,7 @@
 import Foundation
 
-/// Where a day's numbers came from. Values from different sources are never mixed
-/// inside one baseline (e.g. Apple HRV is SDNN, Whoop HRV is RMSSD).
+/// Where a day's numbers came from. Values measured differently are never mixed
+/// (e.g. Apple HRV is SDNN, Whoop HRV is RMSSD).
 public enum DataSource: String, Codable, Sendable, CaseIterable {
     case healthKit
     case whoop
@@ -28,7 +28,7 @@ public struct HealthSnapshot: Codable, Sendable, Equatable, Identifiable {
     public var hrvMs: Double?
     public var hrvMethod: HRVMethod?
     public var restingHeartRate: Double?
-    /// Vendor recovery score 0–100 (Whoop). nil for HealthKit; we derive our own then.
+    /// Vendor recovery score 0–100 (Whoop). nil for Apple Health, which has none an app can read.
     public var vendorRecovery: Double?
     /// When the user fell asleep for the night ending this morning.
     public var sleepOnset: Date?

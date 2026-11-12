@@ -61,9 +61,10 @@ enum StatusGrid {
     static let lead: CGFloat = icon + 12 + label
 }
 
-/// Home v3.4 status: Asleep (the onset time, a lime check once an on-time night is booked, an
-/// empty ring while its moon still waits), Rest (one bar, no number; Whoop users: their recovery,
-/// marked WHOOP). Each row explains itself with a tap.
+/// Home status: Asleep (the onset time, a lime check once an on-time night is booked, an empty
+/// ring while its moon still waits), then Slept (last night's sleep as the watch recorded it) or,
+/// for Whoop users, Rest (Whoop's recovery as one bar, no number, marked WHOOP). Each row explains
+/// itself with a tap. Nothing here is our own estimate (PRD v0.3 「只读原值」).
 struct StatusRow<Content: View>: View {
     let icon: String
     let label: String
@@ -118,24 +119,42 @@ struct AsleepRow: View {
     }
 }
 
-struct RestRow: View {
+/// Apple Watch users: how long they slept last night, as Apple Health has it.
+struct SleptRow: View {
+    let status: HomeStatus
+
+    var body: some View {
+        StatusRow(icon: "bed.double", label: "Slept") {
+            Text(status.slept ?? "–")
+                .font(.rounded(15, .bold))
+                .foregroundStyle(Jade.ink)
+                .monospacedDigit()
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(status.slept.map { "Slept \($0) last night" } ?? "Slept, no sleep data")
+        .accessibilityHint("Explains this row")
+        .accessibilityAddTraits(.isButton)
+    }
+}
+
+/// Whoop users: Whoop's recovery as a bar, no number (that is in Today), marked WHOOP.
+struct RecoveryRow: View {
     let status: HomeStatus
 
     var body: some View {
         StatusRow(icon: "battery.75percent", label: "Rest") {
             HStack(spacing: 8) {
-                Track(fraction: status.rest ?? 0, color: Jade.sleep)
-                if status.fromWhoop {
-                    Text("WHOOP")
-                        .font(.system(size: 9, weight: .medium))
-                        .tracking(1.2)
-                        .foregroundStyle(Jade.ink3)
-                }
+                Track(fraction: status.recovery ?? 0, color: Jade.sleep)
+                Text("WHOOP")
+                    .font(.system(size: 9, weight: .medium))
+                    .tracking(1.2)
+                    .foregroundStyle(Jade.ink3)
             }
             .padding(.trailing, 4)
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(status.rest.map { "\(status.fromWhoop ? "Whoop recovery" : "Rest") \(Int(($0 * 100).rounded())) percent" } ?? "Rest, no data yet")
+        .accessibilityLabel(status.recovery.map { "Whoop recovery \(Int(($0 * 100).rounded())) percent" } ?? "Whoop recovery, not scored yet")
         .accessibilityHint("Explains this row")
         .accessibilityAddTraits(.isButton)
     }

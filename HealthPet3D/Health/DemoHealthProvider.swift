@@ -4,8 +4,6 @@ import PetCore
 /// Fake data for the simulator and SwiftUI previews (the simulator has no Health data).
 struct DemoHealthProvider: HealthDataProvider {
     let source: DataSource = .mock
-    /// Which mood today's data should produce.
-    var scenario: PetMood = .golden
 
     func requestAuthorization() async throws {}
 
@@ -17,11 +15,8 @@ struct DemoHealthProvider: HealthDataProvider {
         var generator = SeededGenerator(seed: 42)
 
         while day < today {
-            let daysAgo = calendar.dateComponents([.day], from: day, to: today).day ?? 0
-            // Sleep debt builds over several nights, so the burnt scenario shortens the last two too.
-            let shortNight = scenario == .burnt && daysAgo <= 2
             // Mostly in bed around 23:00, now and then a late night; a workout every couple of days.
-            let lateNight = shortNight || Int.random(in: 0..<5, using: &generator) == 0
+            let lateNight = Int.random(in: 0..<5, using: &generator) == 0
             let onsetMinute = lateNight ? Int.random(in: 30...90, using: &generator) : Int.random(in: -30...20, using: &generator)
             let workedOut = Int.random(in: 0..<2, using: &generator) == 0
             let workoutMinutes = Double.random(in: 22...50, using: &generator)
@@ -33,7 +28,7 @@ struct DemoHealthProvider: HealthDataProvider {
             result.append(HealthSnapshot(
                 day: day, source: .mock,
                 steps: steps,
-                sleepHours: shortNight ? 5 : Double.random(in: 7...8, using: &generator),
+                sleepHours: Double.random(in: 7...8, using: &generator),
                 hrvMs: Double.random(in: 45...55, using: &generator), hrvMethod: .sdnn,
                 restingHeartRate: Double.random(in: 58...62, using: &generator),
                 sleepOnset: Self.onset(nightEnding: day, minutesAfter11pm: onsetMinute),
@@ -52,23 +47,13 @@ struct DemoHealthProvider: HealthDataProvider {
         return result
     }
 
+    /// The v3.3 mock's day: last night on time, a run, a swim and a 10k-step day, four bubbles.
     private func todaySnapshot(day: Date) -> HealthSnapshot {
-        switch scenario {
-        // the v3.3 mock's day: last night on time, a run, a swim and a 10k-step day, four bubbles
-        case .golden: HealthSnapshot(day: day, source: .mock, steps: 10_240, sleepHours: 7.5, hrvMs: 50, hrvMethod: .sdnn, restingHeartRate: 60,
-                                     sleepOnset: Self.onset(nightEnding: day, minutesAfter11pm: -12), workoutMinutes: 32, workoutType: "Run",
-                                     workouts: [WorkoutSession(name: "Run", minutes: 32, distanceKm: 5.1), WorkoutSession(name: "Swim", minutes: 25, distanceKm: 1.0)],
-                                     wakeTime: Self.wake(day: day, minutesAfter7am: -15),
-                                     activeEnergyKcal: 512)
-        case .burnt:  HealthSnapshot(day: day, source: .mock, steps: 5_000, sleepHours: 4.5, hrvMs: 48, hrvMethod: .sdnn, restingHeartRate: 62,
-                                     sleepOnset: Self.onset(nightEnding: day, minutesAfter11pm: 150), activeEnergyKcal: 160)
-        case .soggy:  HealthSnapshot(day: day, source: .mock, steps: 3_000, sleepHours: 7.2, hrvMs: 30, hrvMethod: .sdnn, restingHeartRate: 68,
-                                     sleepOnset: Self.onset(nightEnding: day, minutesAfter11pm: -10), activeEnergyKcal: 95)
-        case .fresh:  HealthSnapshot(day: day, source: .mock, steps: 12_000, sleepHours: 8.3, hrvMs: 68, hrvMethod: .sdnn, restingHeartRate: 55,
-                                     sleepOnset: Self.onset(nightEnding: day, minutesAfter11pm: -40), workoutMinutes: 45, workoutType: "Yoga",
-                                     workouts: [WorkoutSession(name: "Yoga", minutes: 45)], wakeTime: Self.wake(day: day, minutesAfter7am: -30),
-                                     activeEnergyKcal: 640)
-        }
+        HealthSnapshot(day: day, source: .mock, steps: 10_240, sleepHours: 7.5, hrvMs: 50, hrvMethod: .sdnn, restingHeartRate: 60,
+                       sleepOnset: Self.onset(nightEnding: day, minutesAfter11pm: -12), workoutMinutes: 32, workoutType: "Run",
+                       workouts: [WorkoutSession(name: "Run", minutes: 32, distanceKm: 5.1), WorkoutSession(name: "Swim", minutes: 25, distanceKm: 1.0)],
+                       wakeTime: Self.wake(day: day, minutesAfter7am: -15),
+                       activeEnergyKcal: 512)
     }
 
     private static func wake(day: Date, minutesAfter7am minutes: Int) -> Date {

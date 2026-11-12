@@ -1,8 +1,9 @@
 import Foundation
 import PetCore
 
-/// The status area under the pet (home v3.2): no numbers. The sleep onset time with a check
-/// when it was on time (never a cross), and one Rest bar, fuller = more rested, never red.
+/// The status area under the pet: the sleep onset time with a check when it was on time (never a
+/// cross), then what the wearable recorded (PRD v0.3 「只读原值」): last night's sleep for Apple
+/// Watch users ("Slept 7h 30m"), Whoop's recovery as a bar without a number for Whoop users.
 struct HomeStatus {
     /// "22:48", nil without sleep data.
     let onset: String?
@@ -10,10 +11,12 @@ struct HomeStatus {
     let onTime: Bool
     /// On time, but the moon still waits as a bubble: an empty ring where the check will light up.
     let checkWaiting: Bool
-    /// 0...1, nil = nothing to go on (the bar stays empty rather than showing a made-up value).
-    let rest: Double?
-    /// The bar is Whoop's recovery (a small WHOOP mark), not our own Rest estimate.
-    let fromWhoop: Bool
+    /// Whoop user: the second row is Whoop's recovery bar (with a small WHOOP mark).
+    let whoop: Bool
+    /// "7h 30m" asleep last night, as the watch recorded it; nil without sleep data.
+    let slept: String?
+    /// Whoop's recovery today, 0...1; nil = not scored yet (the bar stays empty).
+    let recovery: Double?
 }
 
 /// One day in the week row on home.
@@ -36,10 +39,12 @@ struct WeekDay: Identifiable {
 extension AppModel {
     // MARK: - Home: status (v3.2)
 
-    /// HRV and every number live in Today; the home only shows the onset time and one bar.
+    /// Every other number lives in Today; the home shows the onset time and one more row.
     var homeStatus: HomeStatus {
         HomeStatus(onset: today?.sleepOnset.map(Format.time), onTime: sleptOnTime && nightBooked,
-                   checkWaiting: sleptOnTime && !nightBooked, rest: rest.map { $0 / 100 }, fromWhoop: restIsWhoop)
+                   checkWaiting: sleptOnTime && !nightBooked, whoop: isWhoopUser,
+                   slept: today?.sleepHours.map { Format.duration(hours: $0) },
+                   recovery: whoopRecovery.map { $0 / 100 })
     }
 
     // MARK: - Week
@@ -80,14 +85,6 @@ extension AppModel {
     /// The longest workout today, if any.
     var mainWorkout: WorkoutSession? { today?.allWorkouts.max { $0.minutes < $1.minutes } }
 
-    /// The pet's mood on the stage: low days get the gentle "tired" look, never a sad one.
-    var stageMood: String {
-        switch petState.mood {
-        case .burnt, .soggy: "tired"
-        case .golden, .fresh: "normal"
-        }
-    }
-
     /// The day's line after the morning wake-up (早上揭晓), and the expression that goes with it.
     /// Only good news: a level-up (collected overnight) hops; an on-time night is said, and the
     /// proud look comes when its moon is eaten (§4.4). Otherwise nothing is said.
@@ -97,9 +94,10 @@ extension AppModel {
         return nil
     }
 
-    /// One short line from the pet, shown for a moment after a tap or a check-in.
-    func petLine(afterCheckIn: Bool = false) -> String {
-        if petState.isAsleep { return "Zzz… see you in the morning." }
+    /// One short line from the pet, shown for a moment after a tap or a check-in. Besides the
+    /// day's news it only follows the pet's energy (PRD v0.3: no daily mood of its own).
+    func petLine(afterCheckIn: Bool = false, energy: PetEnergy? = nil) -> String {
+        if isPetAsleep { return "Zzz… see you in the morning." }
         if afterCheckIn || Bool.random() {
             if let workout = mainWorkout, workout.minutes >= discipline.rules.minWorkoutMinutes {
                 return "\(workout.name) logged. Proud of you!"
@@ -108,11 +106,10 @@ extension AppModel {
             if onTimeStreak >= 2 { return "On time \(onTimeStreak) nights in a row!" }
             if sleptOnTime { return "In bed on time. Proud of you!" }
         }
-        switch petState.mood {
-        case .fresh: return "Fully charged today!"
-        case .golden: return ["Good to see you!", "Hi! I missed you.", "What shall we do today?"].randomElement()!
-        case .burnt: return "Early night together?"
-        case .soggy: return "Let's take it easy today."
+        switch energy ?? self.energy {
+        case .lively: return ["Fully charged today!", "Good to see you!"].randomElement()!
+        case .normal: return ["Good to see you!", "Hi! I missed you.", "What shall we do today?"].randomElement()!
+        case .low: return ["Let's take it easy today.", "Early night together?"].randomElement()!
         }
     }
 
@@ -126,9 +123,10 @@ extension AppModel {
         return weeks + 1
     }
 
-    var weekRange: (start: Date, end: Date) {
+    /// Monday to Sunday of the week starting `weekStart` (nil = this week).
+    func weekRange(starting weekStart: Date?) -> (start: Date, end: Date) {
         let tracker = discipline
-        let start = tracker.weekStart(for: Date())
+        let start = weekStart ?? tracker.weekStart(for: Date())
         return (start, tracker.calendar.date(byAdding: .day, value: 6, to: start) ?? start)
     }
 }
@@ -143,7 +141,7 @@ enum Format {
         return (text.hasSuffix(".0") ? String(text.dropLast(2)) : text) + "k"
     }
 
-    /// "22:48", always on the 24-hour clock like the design.
+    /// "22:48", always on the 24-hour clock like the design (a 12-hour choice comes with PRD v0.3 batch 2).
     static func time(_ date: Date) -> String { clock.string(from: date) }
 
     private static let clock: DateFormatter = {

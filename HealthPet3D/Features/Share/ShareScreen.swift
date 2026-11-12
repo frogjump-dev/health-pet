@@ -66,6 +66,8 @@ struct ShareScreen: View {
 
 /// The moment a 自律周 counts (after the cheer on home): the week's card slides up. Share / Not now.
 struct WeekAchievedSheet: View {
+    /// The week on the card; nil = this week. Last week's when it only counted on Monday at 04:00.
+    var week: WeekProgress?
     @Environment(AppModel.self) private var model
     @Environment(HomeState.self) private var home
     @Environment(\.colorScheme) private var scheme
@@ -75,7 +77,7 @@ struct WeekAchievedSheet: View {
     @State private var image: Image?
 
     var body: some View {
-        let facts = ShareCard.Facts(model: model, home: home, showNumbers: showNumbers, showBedtimes: showBedtimes)
+        let facts = ShareCard.Facts(model: model, home: home, showNumbers: showNumbers, showBedtimes: showBedtimes, week: week)
         VStack(spacing: 10) {
             ShareCard(kind: .week, facts: facts)
                 .frame(width: ShareCard.exportWidth)
@@ -169,12 +171,14 @@ struct ShareCard: View {
         var showNumbers: Bool
         var showBedtimes: Bool
 
+        /// `week`: the week card's week, nil = this one (last week's late 自律周, PRD v0.3 §4.4).
         @MainActor
-        init(model: AppModel, home: HomeState, showNumbers: Bool, showBedtimes: Bool) {
-            title = model.identityTitle
-            weekDone = model.week?.isDisciplined ?? false
-            workouts = model.week?.workouts ?? 0
-            nights = model.week?.onTimeNights ?? 0
+        init(model: AppModel, home: HomeState, showNumbers: Bool, showBedtimes: Bool, week: WeekProgress? = nil) {
+            let shownWeek = week ?? model.week
+            title = model.identityTitle(onTimeNights: shownWeek?.onTimeNights ?? 0)
+            weekDone = shownWeek?.isDisciplined ?? false
+            workouts = shownWeek?.workouts ?? 0
+            nights = shownWeek?.onTimeNights ?? 0
             todayDone = model.checkInsToday > 0
             onset = model.today?.sleepOnset
             onTime = model.sleptOnTime
@@ -193,7 +197,7 @@ struct ShareCard: View {
             mainProud = (home.energyOverride ?? model.energy) != .low
             let name = home.userName.trimmingCharacters(in: .whitespaces)
             let prefix = name.isEmpty ? "" : "\(name) · "
-            let range = model.weekRange
+            let range = model.weekRange(starting: week?.weekStart)
             weekFooter = prefix + Format.range(range.start, range.end)
             todayFooter = prefix + Date().formatted(.dateTime.month(.abbreviated).day())
             self.showNumbers = showNumbers
