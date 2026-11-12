@@ -2,7 +2,8 @@ import SwiftUI
 import PetCore
 
 /// Share: swipe between cards (This week · Today · My pets); the options button holds the two
-/// privacy switches; one Share button (the system sheet has Save Image).
+/// privacy switches; Card or 9:16 (a story picture) under the dots; one Share button (the system
+/// sheet has Save Image).
 /// Card v2 (PRD v0.2 §6, decided 2026-11-08): the reader is someone else, so a card has an
 /// identity title and one plain line; the biggest number is every 自律周 so far.
 struct ShareScreen: View {
@@ -11,6 +12,8 @@ struct ShareScreen: View {
     @Environment(\.colorScheme) private var scheme
     @AppStorage("3d.share.numbers") private var showNumbers = true
     @AppStorage("3d.share.bedtimes") private var showBedtimes = false
+    /// The picture is the 9:16 story (PRD v0.3 §6) instead of the card alone.
+    @AppStorage("3d.share.story") private var story = false
     @State private var page: ShareCard.Kind = {
         #if DEBUG
         // For screenshots on the simulator: -hp3dShareCard today|pets
@@ -39,9 +42,15 @@ struct ShareScreen: View {
             .padding(.horizontal, Metrics.gutter)
             TabView(selection: $page) {
                 ForEach(ShareCard.Kind.allCases) { kind in
-                    ShareCard(kind: kind, facts: facts)
-                        .padding(.horizontal, Metrics.gutter)
-                        .tag(kind)
+                    Group {
+                        if story {
+                            StoryPicture(card: ShareCard(kind: kind, facts: facts)).preview(height: ShareCard.height)
+                        } else {
+                            ShareCard(kind: kind, facts: facts)
+                        }
+                    }
+                    .padding(.horizontal, Metrics.gutter)
+                    .tag(kind)
                 }
             }
             .tabViewStyle(.page(indexDisplayMode: .never))
@@ -50,6 +59,9 @@ struct ShareScreen: View {
             PageDots(count: ShareCard.Kind.allCases.count, current: page.rawValue)
                 .frame(maxWidth: .infinity)
                 .padding(.top, 6)
+            PictureSizePicker(story: $story)
+                .frame(maxWidth: .infinity)
+                .padding(.top, 14)
             Spacer(minLength: 16)
             ShareCardButton(image: image)
                 .padding(.horizontal, Metrics.gutter)
@@ -58,8 +70,9 @@ struct ShareScreen: View {
         .padding(.top, 8)
         .background(Jade.canvas.ignoresSafeArea())
         .toolbar(.hidden, for: .navigationBar)
-        .task(id: "\(page.rawValue)-\(showNumbers)-\(showBedtimes)-\(scheme == .dark)") {
-            image = ShareCard.render(ShareCard(kind: page, facts: facts), scheme: scheme)
+        .task(id: "\(page.rawValue)-\(showNumbers)-\(showBedtimes)-\(story)-\(scheme == .dark)") {
+            let card = ShareCard(kind: page, facts: facts)
+            image = story ? StoryPicture.render(card, scheme: scheme) : ShareCard.render(card, scheme: scheme)
         }
     }
 }
@@ -109,7 +122,7 @@ struct ShareCardButton: View {
     var body: some View {
         Group {
             if let image {
-                ShareLink(item: image, preview: SharePreview("HealthPet", image: image)) {
+                ShareLink(item: image, preview: SharePreview(Bundle.main.displayName, image: image)) {
                     Label("Share", systemImage: "square.and.arrow.up")
                 }
             } else {
@@ -139,7 +152,7 @@ struct PageDots: View {
 
 /// One share card, top to bottom: a stamp (what was achieved), the identity title, one plain line,
 /// the pets on their oval (main pet in the middle, chest out, every pet with its Lv), then every
-/// 自律周 so far as the biggest number, and name · date · HealthPet.
+/// 自律周 so far as the biggest number, and name · date · Ovenpals with a line to find it by.
 struct ShareCard: View {
     enum Kind: Int, CaseIterable, Identifiable {
         case week, today, pets
@@ -206,7 +219,7 @@ struct ShareCard: View {
     }
 
     /// The card's height on screen and in the exported picture.
-    static let height: CGFloat = 446
+    static let height: CGFloat = 456
     /// Width of the exported picture's card (plus a canvas margin around it).
     static let exportWidth: CGFloat = 340
 
@@ -352,7 +365,7 @@ struct ShareCard: View {
         }
     }
 
-    // MARK: - Footer: every 自律周 so far · name and date · HealthPet
+    // MARK: - Footer: every 自律周 so far · name and date · Ovenpals
 
     private var footer: some View {
         HStack(alignment: .bottom) {
@@ -374,12 +387,25 @@ struct ShareCard: View {
                     .foregroundStyle(Jade.ink2)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
-                Text("HealthPet").font(.rounded(14, .heavy)).foregroundStyle(Jade.ink)
+                Text("Ovenpals").font(.rounded(14, .heavy)).foregroundStyle(Jade.ink)
+                // someone who sees the card can find the app (PRD v0.3 §6): a short link once there
+                // is one, until then the name above and what it is
+                Text(Self.findLine)
+                    .font(.rounded(10, .semibold))
+                    .foregroundStyle(Jade.ink2)
+                    .lineLimit(1)
             }
         }
         .padding(.top, 14)
         .overlay(alignment: .top) { Rectangle().fill(Jade.fill).frame(height: 1) }
         .padding(.top, 6)
+    }
+
+    /// "ovenpals.app" once `ShareLinkText` is set in Info.plist, else "iPhone app".
+    static var findLine: String {
+        let link = (Bundle.main.object(forInfoDictionaryKey: "ShareLinkText") as? String)?
+            .trimmingCharacters(in: .whitespaces) ?? ""
+        return link.isEmpty ? "iPhone app" : link
     }
 
     // MARK: - Export
@@ -393,6 +419,74 @@ struct ShareCard: View {
             .environment(\.colorScheme, scheme))
         renderer.scale = 3
         return renderer.uiImage.map { Image(uiImage: $0) }
+    }
+}
+
+/// The 9:16 story picture (PRD v0.3 §6, decided 2026-11-10): the card in the middle of a
+/// 1080 × 1920 canvas, clear of the bars a story app lays over the top and bottom.
+struct StoryPicture: View {
+    let card: ShareCard
+
+    static let size = CGSize(width: 360, height: 640)
+    /// The card at 86 %: 292 × 392 pt, from about 124 pt to 516 pt down.
+    private static let cardScale: CGFloat = 0.86
+
+    var body: some View {
+        let s = Self.cardScale
+        card
+            .frame(width: ShareCard.exportWidth, height: ShareCard.height)
+            .scaleEffect(s)
+            .frame(width: ShareCard.exportWidth * s, height: ShareCard.height * s)
+            .frame(width: Self.size.width, height: Self.size.height)
+            .background(Jade.canvas)
+    }
+
+    /// On the Share page: the whole picture, scaled down to the card's height, with a hairline edge.
+    func preview(height: CGFloat) -> some View {
+        let k = height / Self.size.height
+        return self
+            .scaleEffect(k)
+            .frame(width: Self.size.width * k, height: height)
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(Jade.ink3.opacity(0.5), lineWidth: 1))
+            .frame(maxWidth: .infinity)
+            .accessibilityElement(children: .combine)
+    }
+
+    /// 1080 × 1920.
+    @MainActor
+    static func render(_ card: ShareCard, scheme: ColorScheme) -> Image? {
+        let renderer = ImageRenderer(content: StoryPicture(card: card).environment(\.colorScheme, scheme))
+        renderer.scale = 3
+        return renderer.uiImage.map { Image(uiImage: $0) }
+    }
+}
+
+/// Card or 9:16, two small capsules under the page dots.
+private struct PictureSizePicker: View {
+    @Binding var story: Bool
+
+    var body: some View {
+        HStack(spacing: 6) {
+            chip("Card", on: !story) { story = false }
+            chip("9:16", on: story) { story = true }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Picture size")
+    }
+
+    private func chip(_ title: String, on: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.rounded(13, .bold))
+                .foregroundStyle(on ? Jade.onPrimary : Jade.ink2)
+                .padding(.horizontal, 14)
+                .frame(minHeight: 30)
+                .background(Capsule().fill(on ? Jade.primary : Jade.fill))
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(on ? .isSelected : [])
+        .accessibilityLabel(title == "9:16" ? "Story, 9 by 16" : "Card")
     }
 }
 
