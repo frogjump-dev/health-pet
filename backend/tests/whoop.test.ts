@@ -64,7 +64,8 @@ const stages = (hours: number) => ({
 });
 
 function sleep(id: string, end: string, hours: number, extra: Partial<WhoopSleep> = {}): WhoopSleep {
-  return { id, cycle_id: 1, start: end, end, timezone_offset: "+00:00", nap: false, score_state: "SCORED", score: stages(hours), ...extra };
+  const start = new Date(Date.parse(end) - hours * 3_600_000).toISOString();
+  return { id, cycle_id: 1, start, end, timezone_offset: "+00:00", nap: false, score_state: "SCORED", score: stages(hours), ...extra };
 }
 
 function recovery(sleepId: string, score: number, extra: Partial<WhoopRecovery["score"]> = {}): WhoopRecovery {
@@ -89,8 +90,25 @@ test("sleep + recovery become one snapshot per day", () => {
     vendor_recovery: 40,
     strain: null,
     sleep_performance: null,
+    sleep_onset: "2026-10-28T01:00:00.000Z",
+    wake_time: "2026-10-28T07:00:00Z",
     whoop_sleep_id: "s2",
   });
+});
+
+test("asleep and awake times are Whoop's own sleep start and end, sent to the app", () => {
+  // Asleep 22:48 and awake 06:40 in Los Angeles.
+  const s = sleep("s", "2026-10-28T13:40:00.000Z", 7, { start: "2026-10-28T05:48:12.345Z", timezone_offset: "-07:00" });
+  const [row] = toSnapshotRows([s], []);
+  assert.equal(row.day, "2026-10-28"); // the morning the user woke up, where they slept
+  assert.equal(row.sleep_onset, "2026-10-28T05:48:12.345Z");
+  assert.equal(row.wake_time, "2026-10-28T13:40:00.000Z");
+  const dto = toDTO(row);
+  assert.equal(dto.sleepOnset, "2026-10-28T05:48:12.345Z");
+  assert.equal(dto.wakeTime, "2026-10-28T13:40:00.000Z");
+  // Rows saved before the columns existed come back without them.
+  const { sleep_onset: _a, wake_time: _b, ...old } = row;
+  assert.equal(toDTO(old as typeof row).sleepOnset, null);
 });
 
 test("naps are ignored and the longest main sleep wins", () => {
@@ -120,7 +138,8 @@ test("unscored data and calibrating recovery are left empty", () => {
 test("DTO uses the app's field names", () => {
   const [row] = toSnapshotRows([sleep("s", "2026-10-28T07:00:00Z", 8)], [recovery("s", 66)]);
   assert.deepEqual(Object.keys(toDTO(row)).sort(),
-    ["day", "hrvMethod", "hrvMs", "restingHeartRate", "sleepHours", "sleepPerformance", "source", "strain", "vendorRecovery"]);
+    ["day", "hrvMethod", "hrvMs", "restingHeartRate", "sleepHours", "sleepOnset", "sleepPerformance", "source", "strain",
+      "vendorRecovery", "wakeTime"]);
 });
 
 test("day strain comes from the cycle the sleep starts; sleep performance from the sleep", () => {

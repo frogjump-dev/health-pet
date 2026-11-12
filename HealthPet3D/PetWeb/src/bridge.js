@@ -34,11 +34,12 @@ function placeStage() {
 // ---------- the pet's slow energy (PRD v0.2 §5.5) ----------
 // Built on the director's own idle (live.js is unchanged): every so often, while the pet is awake,
 // in a normal mood and doing nothing else, it gets one more idle move from its energy's pool.
-// Lively hums, hops and sparkles more; low yawns, daydreams and stretches more, its floor is paler,
-// and a tap first cheers you on. Never sad.
+// Lively hums, hops and sparkles more; low yawns, daydreams, stretches and now and then looks a
+// little tired (PRD v0.3: the daily 「有点累」 mood is gone, its look lives here), its floor is
+// paler, and a tap first cheers you on. Never sad.
 const ENERGY_IDLE = {
   lively: ['hum', 'hum', 'hum', 'hop', 'hop', 'starry', 'proud'],
-  low: ['yawn', 'yawn', 'daydream', 'daydream', 'stretch'],
+  low: ['yawn', 'yawn', 'daydream', 'daydream', 'stretch', 'tired'],
 };
 let energyIn = 8, cheeredAt = -1e9;
 function applyEnergy() {

@@ -18,6 +18,12 @@ struct SettingsScreen: View {
             SettingsGroup("Apple Health") {
                 if model.appleHealthConnected {
                     SettingsRow("Status") { SettingsValue("Connected") }
+                    // Nothing for a few days: access may be off, and only the Health app can
+                    // turn it back on (PRD v0.3 §6).
+                    if model.appleHealthQuiet {
+                        RowDivider()
+                        SettingsNote("Nothing from Apple Health for \(model.daysWithoutData) days. To check access, open the Health app, tap your picture, then Apps › \(Bundle.main.displayName).")
+                    }
                 } else {
                     SettingsButton("Connect Apple Health") { Task { await model.connectAppleHealth() } }
                 }
@@ -87,19 +93,6 @@ struct SettingsScreen: View {
                     .labelsHidden()
                 }
                 RowDivider()
-                SettingsRow("Demo day") {
-                    Picker("Demo day", selection: $model.demoScenario) {
-                        Text("Good").tag(PetMood.golden)
-                        Text("Fully rested").tag(PetMood.fresh)
-                        Text("Short night").tag(PetMood.burnt)
-                        Text("Low recovery").tag(PetMood.soggy)
-                    }
-                    .pickerStyle(.menu)
-                    .labelsHidden()
-                }
-                .disabled(model.dataMode != .demo)
-                .opacity(model.dataMode == .demo ? 1 : 0.45)
-                RowDivider()
                 SettingsRow("Pet energy") {
                     Picker("Pet energy", selection: $home.energyOverride) {
                         Text("From data").tag(PetEnergy?.none)
@@ -129,7 +122,6 @@ struct SettingsScreen: View {
             }
         }
         .onChange(of: model.dataMode) { Task { await model.refresh() } }
-        .onChange(of: model.demoScenario) { Task { await model.refresh() } }
         .onChange(of: model.sleepSchedule) { Task { await model.refresh() } }
     }
 
@@ -237,6 +229,21 @@ private struct SettingsLabel: View {
     }
 }
 
+/// A short grey explanation under a row.
+private struct SettingsNote: View {
+    let text: String
+    init(_ text: String) { self.text = text }
+
+    var body: some View {
+        Text(text)
+            .font(.rounded(13, .medium))
+            .foregroundStyle(Jade.ink2)
+            .lineSpacing(2)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 12)
+    }
+}
+
 private struct SettingsValue: View {
     let text: String
     init(_ text: String) { self.text = text }
@@ -273,5 +280,13 @@ private struct SettingsButton: View {
 private struct RowDivider: View {
     var body: some View {
         Rectangle().fill(Jade.fill).frame(height: 1)
+    }
+}
+
+extension Bundle {
+    /// The app's name under its icon ("HealthPet 3D"), as the Health app lists it.
+    var displayName: String {
+        object(forInfoDictionaryKey: "CFBundleDisplayName") as? String
+            ?? object(forInfoDictionaryKey: "CFBundleName") as? String ?? "HealthPet"
     }
 }

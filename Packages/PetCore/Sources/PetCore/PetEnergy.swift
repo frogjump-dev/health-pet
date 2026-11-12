@@ -20,18 +20,18 @@ public enum EnergyMeter {
     public static let livelyFrom = 0.75
     public static let lowBelow = 0.4
 
-    /// On-time nights, workouts and the rest estimate over the last 7 days, a third each.
-    /// Only finished days count for workouts and the nights up to last night, so the tier is
-    /// settled in the morning and does not jump around during the day.
+    /// On-time nights and workouts over the last 7 days, half each (PRD v0.3 「只读原值」: no
+    /// scores of our own, so recovery and HRV play no part). Only finished days count for
+    /// workouts and the nights up to last night, so the tier is settled in the morning and does
+    /// not jump around during the day.
     ///
     /// - nights: the 7 nights ending this morning; 5 on time is full marks (a leave day counts).
     /// - workouts: the 7 days before today; 3 is full marks.
-    /// - rest: the mean of the 7 days' rest (Whoop recovery or our estimate), 0–100.
     /// Parts without any data are left out; with no data at all the pet is normal.
     public static func energy(snapshots: [HealthSnapshot], today: Date, tracker: DisciplineTracker,
-                              baseline: PersonalBaseline, leaveDays: Set<Date> = []) -> PetEnergy {
+                              leaveDays: Set<Date> = []) -> PetEnergy {
         guard let score = score(snapshots: snapshots, today: today, tracker: tracker,
-                                baseline: baseline, leaveDays: leaveDays) else { return .normal }
+                                leaveDays: leaveDays) else { return .normal }
         if score >= livelyFrom { return .lively }
         if score < lowBelow { return .low }
         return .normal
@@ -39,7 +39,7 @@ public enum EnergyMeter {
 
     /// 0...1, nil when there is nothing to go on.
     public static func score(snapshots: [HealthSnapshot], today: Date, tracker: DisciplineTracker,
-                             baseline: PersonalBaseline, leaveDays: Set<Date> = []) -> Double? {
+                             leaveDays: Set<Date> = []) -> Double? {
         let calendar = tracker.calendar
         let todayStart = calendar.startOfDay(for: today)
         guard let nightsFrom = calendar.date(byAdding: .day, value: -6, to: todayStart),
@@ -58,10 +58,6 @@ public enum EnergyMeter {
         if workoutDays.contains(where: { $0.steps != nil || $0.workoutMinutes != nil || !$0.allWorkouts.isEmpty }) {
             let workouts = workoutDays.filter(tracker.countsAsWorkout).count
             parts.append(min(1, Double(workouts) / Double(tracker.rules.workoutsPerWeek)))
-        }
-        let rests = nightDays.compactMap { DailyMetrics.recovery($0, baseline: baseline) }
-        if !rests.isEmpty {
-            parts.append(rests.reduce(0, +) / Double(rests.count) / 100)
         }
         guard !parts.isEmpty else { return nil }
         return parts.reduce(0, +) / Double(parts.count)

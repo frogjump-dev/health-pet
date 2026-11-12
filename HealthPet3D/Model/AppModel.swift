@@ -15,15 +15,27 @@ enum WhoopStatus: Equatable {
     case connected
 }
 
-/// App-wide state: gathers health data from every source, turns it into the pet's state,
-/// and exposes the pet store to the views.
+/// App-wide state: gathers health data from every source, books it, works out the weeks and
+/// the pets' levels, and exposes the pet store to the views. It only reads what Apple Health and
+/// Whoop recorded and never makes up a health score of its own (PRD v0.3 「只读原值」).
 @MainActor
 @Observable
 final class AppModel {
-    private(set) var petState: PetState = .neutral
+    /// How many days back every refresh reads.
+    static let historyDays = 30
+
     private(set) var today: HealthSnapshot?
+    /// It is bedtime: the pet sleeps (worked out on every refresh).
+    private(set) var isPetAsleep = false
     /// This calendar week's 自律周 progress.
     private(set) var week: WeekProgress?
+    /// Last week's, as it finally counts (its last bubbles are collected on Monday at 04:00), so a
+    /// 自律周 completed that way is still celebrated on the next open (PRD v0.3 §4.4).
+    private(set) var previousWeek: WeekProgress?
+    /// Any night with sleep data in the last 30 days (none: the pet says how to get the moon).
+    private(set) var hasSleepData = true
+    /// The days since the last day with any data from Apple Health or Whoop (0 = today has some).
+    private(set) var daysWithoutData = 0
     /// This calendar week's days so far (Monday first), oldest first, as they count so far:
     /// what still waits as a food bubble is left out (点击 = 入账).
     private(set) var weekDays: [HealthSnapshot] = []
@@ -33,8 +45,6 @@ final class AppModel {
     private(set) var pending: [Credit] = []
     /// The days that can still be tapped, every credit, eaten or not (where the bubbles sit).
     private(set) var openCredits: [Credit] = []
-    /// The user's own 30-day normal before today (HRV measured the same way as today's).
-    private(set) var baseline = PersonalBaseline()
     /// On-time nights in a row, up to last night.
     private(set) var onTimeStreak = 0
     /// Each activity's sessions, experience and unlock day; one entry per activity.
@@ -56,7 +66,6 @@ final class AppModel {
     var dataMode: DataMode {
         didSet { defaults.set(dataMode.rawValue, forKey: Keys.dataMode) }
     }
-    var demoScenario: PetMood = .golden
     /// Saved on this phone; changing it re-judges past nights on the next refresh.
     var sleepSchedule: SleepSchedule {
         didSet { defaults.set(try? JSONEncoder().encode(sleepSchedule), forKey: Keys.sleepSchedule) }
@@ -69,7 +78,6 @@ final class AppModel {
     private let demoBook: CreditBook
     var creditBook: CreditBook { dataMode == .live ? liveBook : demoBook }
 
-    private let engine = PetStateEngine()
     private let memoryDetector = MemoryDetector()
     private let healthKit = HealthKitProvider()
     private let whoop: WhoopProvider
@@ -202,19 +210,19 @@ final class AppModel {
 
     // MARK: - Refresh
 
-    /// Pulls the last 30 days from every source, merges them per day and re-evaluates the pet.
+    /// Pulls the last 30 days from every source, merges them per day and works everything out again.
     /// Called on launch and whenever the app comes to the foreground.
     func refresh(now: Date = Date()) async {
         isLoading = true
         defer { isLoading = false }
 
-        let start = Calendar.current.date(byAdding: .day, value: -PersonalBaseline.windowDays, to: now)!
+        let start = Calendar.current.date(byAdding: .day, value: -Self.historyDays, to: now)!
         var collected: [HealthSnapshot] = []
         var failures: [Error] = []
 
         switch dataMode {
         case .demo:
-            collected = (try? await DemoHealthProvider(scenario: demoScenario).snapshots(from: start, to: now)) ?? []
+            collected = (try? await DemoHealthProvider().snapshots(from: start, to: now)) ?? []
 
         case .live:
             // Asks only for types added since the user first connected (e.g. workouts); no sheet otherwise.
@@ -263,9 +271,11 @@ final class AppModel {
         let history = snapshots.filter { $0.day < todayStart }
 
         today = todaySnapshot
-        var state = engine.evaluate(today: todaySnapshot, history: history)
-        state.isAsleep = sleepSchedule.isBedtime(at: now)
-        petState = state
+        isPetAsleep = sleepSchedule.isBedtime(at: now)
+        hasSleepData = snapshots.contains { $0.sleepOnset != nil || $0.sleepHours != nil }
+        let lastDataDay = snapshots.filter(\.hasAnyData).map(\.day).max()
+        daysWithoutData = lastDataDay.flatMap { Calendar.current.dateComponents([.day], from: $0, to: todayStart).day }
+            ?? Self.historyDays
 
         let tracker = discipline
         let leave = store.leaveDays
@@ -286,12 +296,12 @@ final class AppModel {
 
         week = tracker.week(containing: now, snapshots: booked, leaveDays: leave)
         let weekStart = tracker.weekStart(for: now)
+        previousWeek = tracker.calendar.date(byAdding: .day, value: -7, to: weekStart)
+            .map { tracker.week(containing: $0, snapshots: booked, leaveDays: leave) }
         weekDays = booked.filter { $0.day >= weekStart && $0.day <= todayStart }.sorted { $0.day < $1.day }
-        let baseline = PersonalBaseline.from(history: history, before: todayStart, hrvMethod: todaySnapshot.hrvMethod)
-        self.baseline = baseline
         onTimeStreak = tracker.onTimeStreak(booked)
         // the pet's slow condition is about how the days went, booked or not
-        energy = EnergyMeter.energy(snapshots: snapshots, today: now, tracker: tracker, baseline: baseline, leaveDays: leave)
+        energy = EnergyMeter.energy(snapshots: snapshots, today: now, tracker: tracker, leaveDays: leave)
         let finishedWeeks = tracker.disciplinedWeeks(in: booked, before: now, leaveDays: leave)
         let activities = activityTracker
         let log = activities.log(booked, today: todayStart)

@@ -143,6 +143,9 @@ export interface SnapshotRow {
   /** Day strain 0-21 of the cycle that began with this sleep (still rising while the day is going). */
   strain: number | null;
   sleep_performance: number | null;
+  /** When the main sleep started and ended, as Whoop recorded them (ISO 8601). The app reads them as they are. */
+  sleep_onset: string | null;
+  wake_time: string | null;
   whoop_sleep_id: string;
 }
 
@@ -190,6 +193,8 @@ export function toSnapshotRows(sleeps: WhoopSleep[], recoveries: WhoopRecovery[]
       // A cycle in progress is still scored as it goes, so today's strain rises during the day.
       strain: cycle?.score ? round(cycle.score.strain, 1) : null,
       sleep_performance: performance ?? null,
+      sleep_onset: sleep.start ?? null,
+      wake_time: sleep.end ?? null,
       whoop_sleep_id: sleep.id,
     };
 
@@ -218,6 +223,8 @@ export interface SnapshotDTO {
   vendorRecovery: number | null;
   strain: number | null;
   sleepPerformance: number | null;
+  sleepOnset: string | null;
+  wakeTime: string | null;
 }
 
 export function toDTO(row: SnapshotRow): SnapshotDTO {
@@ -231,5 +238,7 @@ export function toDTO(row: SnapshotRow): SnapshotDTO {
     vendorRecovery: row.vendor_recovery,
     strain: row.strain,
     sleepPerformance: row.sleep_performance,
+    sleepOnset: row.sleep_onset ?? null,
+    wakeTime: row.wake_time ?? null,
   };
 }

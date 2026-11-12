@@ -101,10 +101,10 @@ struct HealthKitProvider: HealthDataProvider {
         return result
     }
 
-    /// Hours asleep, the time of falling asleep and of waking up for the night that ends on each day.
-    /// Overlapping samples from several sources (Watch + phone + third-party apps) are merged
-    /// so they are not double counted.
-    private func dailySleep(from start: Date, to end: Date) async throws -> [Date: (hours: Double, onset: Date?, wake: Date?)] {
+    /// Hours asleep, the time of falling asleep and of waking up for the night that counts on each
+    /// day. Stretches are sorted into nights with the 18:00 cut (`SleepNights`), and overlapping
+    /// stretches from several sources (Watch + phone + third-party apps) are counted once.
+    private func dailySleep(from start: Date, to end: Date) async throws -> [Date: SleepNights.Night] {
         // Look back 12h so a night that started the evening before `start` is included.
         let queryStart = start.addingTimeInterval(-12 * 3600)
         let descriptor = HKSampleQueryDescriptor(
@@ -116,26 +116,12 @@ struct HealthKitProvider: HealthDataProvider {
         )
         let samples = try await descriptor.result(for: store)
 
-        let asleep = samples.filter { sample in
-            guard let value = HKCategoryValueSleepAnalysis(rawValue: sample.value) else { return false }
-            return HKCategoryValueSleepAnalysis.allAsleepValues.contains(value)
+        let asleep = samples.compactMap { sample -> DateInterval? in
+            guard let value = HKCategoryValueSleepAnalysis(rawValue: sample.value),
+                  HKCategoryValueSleepAnalysis.allAsleepValues.contains(value) else { return nil }
+            return DateInterval(start: sample.startDate, end: sample.endDate)
         }
-
-        var intervalsByDay: [Date: [DateInterval]] = [:]
-        for sample in asleep {
-            let day = calendar.startOfDay(for: sample.endDate)
-            intervalsByDay[day, default: []].append(DateInterval(start: sample.startDate, end: sample.endDate))
-        }
-        return intervalsByDay.reduce(into: [:]) { result, entry in
-            // Onset = first sleep after 6 pm the evening before, so afternoon naps don't count.
-            let eveningBefore = calendar.date(byAdding: .hour, value: -6, to: entry.key)!
-            let night = entry.value.filter { $0.start >= eveningBefore }
-            let onset = night.map(\.start).min()
-            // Wake = end of the night's sleep; a nap starting after noon doesn't move it.
-            let noon = calendar.date(byAdding: .hour, value: 12, to: entry.key)!
-            let wake = night.filter { $0.start < noon }.map(\.end).max()
-            result[entry.key] = (mergedDuration(entry.value) / 3600, onset, wake)
-        }
+        return SleepNights.nights(asleep, calendar: calendar)
     }
 
     /// Every workout started on each day.
@@ -183,7 +169,7 @@ struct HealthKitProvider: HealthDataProvider {
             result[calendar.startOfDay(for: sample.startDate), default: []]
                 .append(DateInterval(start: sample.startDate, end: sample.endDate))
         }
-        return result.mapValues { mergedDuration($0) / 60 }
+        return result.mapValues { SleepNights.mergedDuration($0) / 60 }
     }
 
     private static func shortName(_ type: HKWorkoutActivityType) -> String {
@@ -222,21 +208,5 @@ struct HealthKitProvider: HealthDataProvider {
         case .hockey: "Hockey"
         default: "Workout"
         }
-    }
-
-    private func mergedDuration(_ intervals: [DateInterval]) -> TimeInterval {
-        let sorted = intervals.sorted { $0.start < $1.start }
-        var total: TimeInterval = 0
-        var current: DateInterval?
-        for interval in sorted {
-            if let c = current, interval.start <= c.end {
-                current = DateInterval(start: c.start, end: max(c.end, interval.end))
-            } else {
-                if let c = current { total += c.duration }
-                current = interval
-            }
-        }
-        if let c = current { total += c.duration }
-        return total
     }
 }

@@ -11,7 +11,6 @@ final class PRDv02Tests: XCTestCase {
         return c
     }()
     private lazy var tracker = DisciplineTracker(bedtime: Bedtime(hour: 23), calendar: calendar)
-    private let normal = PersonalBaseline(sleepHours: 8, hrvMs: 50, hrvMethod: .sdnn, sampleCount: 20)
 
     /// Monday 2026-10-26, 00:00 UTC.
     private let monday = Date(timeIntervalSince1970: 1_792_972_800)
@@ -55,12 +54,6 @@ final class PRDv02Tests: XCTestCase {
         XCTAssertEqual(half.isOnTimeNight(snapshot(1, asleep: onset(1, 23, 1))), false)
     }
 
-    func testOnsetFillUsesTheWeekendTarget() {
-        var weekend = tracker
-        weekend.weekendBedtime = Bedtime(hour: 0, minute: 30)
-        XCTAssertEqual(DailyMetrics.onsetFill(snapshot(5, asleep: onset(5, 0, 55)), tracker: weekend), 1)
-    }
-
     // MARK: - The pet's slow energy
 
     private func week(nights: Int, workouts: Int, hrv: Double, sleep: Double) -> [HealthSnapshot] {
@@ -83,32 +76,32 @@ final class PRDv02Tests: XCTestCase {
     func testEnergyTiers() {
         let today = day(14)
         let good = week(nights: 6, workouts: 4, hrv: 55, sleep: 8)
-        XCTAssertEqual(EnergyMeter.energy(snapshots: good, today: today, tracker: tracker, baseline: normal), .lively)
+        XCTAssertEqual(EnergyMeter.energy(snapshots: good, today: today, tracker: tracker), .lively)
 
         let middling = week(nights: 3, workouts: 2, hrv: 50, sleep: 7)
-        XCTAssertEqual(EnergyMeter.energy(snapshots: middling, today: today, tracker: tracker, baseline: normal), .normal)
+        XCTAssertEqual(EnergyMeter.energy(snapshots: middling, today: today, tracker: tracker), .normal)
 
         let flat = week(nights: 0, workouts: 0, hrv: 40, sleep: 5)
-        XCTAssertEqual(EnergyMeter.energy(snapshots: flat, today: today, tracker: tracker, baseline: normal), .low)
+        XCTAssertEqual(EnergyMeter.energy(snapshots: flat, today: today, tracker: tracker), .low)
 
-        XCTAssertEqual(EnergyMeter.energy(snapshots: [], today: today, tracker: tracker, baseline: normal), .normal,
+        XCTAssertEqual(EnergyMeter.energy(snapshots: [], today: today, tracker: tracker), .normal,
                        "no data is never low")
     }
 
     func testTodaysWorkoutDoesNotMoveTheTierDuringTheDay() {
         let today = day(14)
         var days = week(nights: 3, workouts: 2, hrv: 50, sleep: 7)
-        let before = EnergyMeter.score(snapshots: days, today: today, tracker: tracker, baseline: normal)
+        let before = EnergyMeter.score(snapshots: days, today: today, tracker: tracker)
         days[days.count - 1].workoutMinutes = 60
         days[days.count - 1].workouts = [WorkoutSession(name: "Run", minutes: 60)]
-        XCTAssertEqual(EnergyMeter.score(snapshots: days, today: today, tracker: tracker, baseline: normal), before)
+        XCTAssertEqual(EnergyMeter.score(snapshots: days, today: today, tracker: tracker), before)
     }
 
     func testLeaveDaysCountAsOnTimeNightsForEnergy() {
         let today = day(14)
         let days = week(nights: 4, workouts: 3, hrv: 50, sleep: 7.5)
-        let without = EnergyMeter.score(snapshots: days, today: today, tracker: tracker, baseline: normal)!
-        let with = EnergyMeter.score(snapshots: days, today: today, tracker: tracker, baseline: normal,
+        let without = EnergyMeter.score(snapshots: days, today: today, tracker: tracker)!
+        let with = EnergyMeter.score(snapshots: days, today: today, tracker: tracker,
                                      leaveDays: [day(13)])!
         XCTAssertGreaterThan(with, without)
     }

@@ -18,7 +18,7 @@ App ──► snapshots?from&to (re-syncs if older than 30 min) ──► daily_
 | `whoop-connect` | app (signed in) | returns the Whoop authorize URL with a one-time state |
 | `whoop-callback` | browser, redirected by Whoop | stores tokens, backfills, sends the browser back to the app |
 | `whoop-webhook` | Whoop | verifies the HMAC signature, dedupes by `trace_id`, re-syncs in the background |
-| `snapshots` | app (signed in) | `{ connected, snapshots: [...] }` for a date range |
+| `snapshots` | app (signed in) | `{ connected, snapshots: [...] }` for a date range; each day carries Whoop's own sleep start and end (`sleepOnset`, `wakeTime`), which the app uses as they are |
 | `whoop-disconnect` | app (signed in) | deletes tokens and stored Whoop data |
 
 Shared code lives in `supabase/functions/_shared/`: `whoop.ts` (pure logic, unit tested),
@@ -56,5 +56,7 @@ npm run typecheck
    ```
    Optional: `APP_RETURN_URL` (default `ovenpals://whoop/connected`). Its scheme must be the app's
    `WhoopConnector.callbackScheme`, or the Whoop sign-in sheet never closes back into the app.
+   After a new migration (e.g. `20261112000000_whoop_sleep_times.sql`), apply it *before*
+   deploying the functions that read or write its columns (`snapshots`, `whoop-callback`, `whoop-webhook`).
 4. **App**: copy `Config/Secrets.example.xcconfig` to `Config/Secrets.xcconfig`, fill in the
    project ref and anon key, then `xcodegen generate`.

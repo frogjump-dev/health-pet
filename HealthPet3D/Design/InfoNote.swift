@@ -68,9 +68,10 @@ struct WeekNote: View {
                      + Text(" · asleep by \(bedtime)"))
                 line(.leave, Jade.sleep, Text("Leave night · one a week, still counts"))
                 Rectangle().fill(Jade.fill).frame(height: 1).padding(.vertical, 2)
-                Text("3 + 5 = a disciplined week, Monday to Sunday.")
-                    .font(.rounded(13, .bold))
-                    .foregroundStyle(Jade.ink)
+                // a night counts on the morning you wake up (PRD v0.3 §4.1)
+                (Text("3 + 5 = a disciplined week, Monday to Sunday.").bold().foregroundStyle(Jade.ink)
+                    + Text(" Nights count on the morning you wake up.").foregroundStyle(Jade.ink2))
+                    .font(.rounded(13, .medium))
             }
         }
     }

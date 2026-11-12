@@ -64,7 +64,7 @@ HealthPet3D/
 - 改了 `PetWeb/src/` 以后：`cd HealthPet3D/PetWeb && npm install && npm run build`，会重新生成 `Resources/PetWeb/pet.html`。
   重新渲染静态图和图标：`node tools/stills.js ../Resources/PetWeb/pet.html <输出目录>`（需要 Playwright）。
 - 表情规则沿用预览：点一下随机害羞 / 吓一跳 / 歪头 / 眨眼，连点 3 下被挠痒，6 下晕乎乎，按住被摸摸；没人碰 45 秒犯困、2 分钟睡着；
-  每天第一次打开播「醒来」；吃食物时眼睛跟着碎屑、嚼三下再吞（`Pet.feed`）；吃完所有食物「开心跳」；睡觉时间一到很快睡着；状态差的日子是「有点累」。
+  每天第一次打开播「醒来」；吃食物时眼睛跟着碎屑、嚼三下再吞（`Pet.feed`）；吃完所有食物「开心跳」；睡觉时间一到很快睡着；没电（元气低）时偶尔露出「有点累」。
 
 ## 按 PRD v0.2 做了什么（2026-11-08）
 
@@ -105,7 +105,7 @@ PRD v0.2 §4.3 / §4.4 / §6 已定。设计稿：`健康宠物/3D方案/ui-fina
   宠物嚼三下吞下、头边冒出「Chili +1」、一个小点从脚下飞到本周那一格，格子填满并跳一下；全吃完开心跳。
   晚睡和 Whoop 负荷不进格子，小点飞到 Memories 图标。
 - **本周进度行**：状态区下面「This week」：跑步图标 + 3 格、月亮 + 5 格（请假夜是虚线格）。
-- **名词标签**：底栏 Pets · Today · Memories，状态区 Asleep · Rest · This week，都带图标。
+- **名词标签**：底栏 Pets · Today · Memories，状态区 Asleep · Rest · This week，都带图标（v0.3 起 Apple Watch 用户的第二行是 Slept）。
 - **点一下有说明**：Asleep、Rest、This week（逐格解释）和日历行的每一天都会弹出小卡片。
 - **日历行 B**：圆点换成 11 pt 的跑步 / 月亮图标，没有的那天是短横。
 - **首次打开 6 页**：你好 → 连 Apple Health（说明会读哪四类数据）→ 读取进度 → 「You’ve already met two pets」→ 入睡时间（可分周末）→ 主页。
@@ -115,12 +115,31 @@ PRD v0.2 §4.3 / §4.4 / §6 已定。设计稿：`健康宠物/3D方案/ui-fina
   This week 用胶囊格 + 还差几次；Rest 条。每张卡点一下都有说明。
 - **Memories** 多了「Collected」：每次吃掉的食物一行（「Chili +1」或「Chili Lv 15 → 16」）。
 
+## 按 PRD v0.3 做了什么（2026-11-12）
+
+PRD v0.3 §10.3「已定、还没做」分四批做，这是第 1 批「只读原值，不造分数」：App 不再自己算任何健康分数，只读 Apple Watch、Whoop 记下的原值。
+
+- **睡眠按夜分组**（`PetCore/SleepNights.swift`，有单元测试）：Apple 健康只给一段段睡眠片段，App 只决定哪些属于同一晚：
+  18:00 到第二天 18:00 开始的片段算一晚，记在醒来的那天；入睡 = 第一段的开始，时长 = 各段相加（重叠只算一次），
+  醒来 = 中午前开始的最后一段的结束。以前按片段结束的日期归天，零点前入睡会被记晚。
+- **Whoop 的入睡和醒来时间直接用 Whoop 的**：服务器把主睡眠的开始、结束存进 `daily_snapshots.sleep_onset / wake_time`
+  （迁移 `20261112000000_whoop_sleep_times.sql`）并传给 App，合并时 Whoop 优先。
+- **主页状态区第二行**：Apple Watch 用户 = 床图标 + Slept + 昨晚睡了多久（7h 30m）；Whoop 用户仍是 Whoop 恢复条（不带数字，标 WHOOP）。
+  说明小卡和导览第 2 步的话跟着分开写。Today 只给 Whoop 用户留 Recovery 一行。
+- **元气只看准时夜和运动次数**，各占一半（`PetCore/PetEnergy.swift`）。
+- **删掉的估算**：Rest（HRV + 睡眠时长）、每日负荷、宠物每天的心情（`DailyMetrics`、`PersonalBaseline`、`PetStateEngine`）。
+  宠物舞台和点它说的话只跟元气三档走；Settings 测试组的「Demo day」心情开关去掉。
+- **上一周补庆祝**：上一周靠周一 04:00 自动入账才凑满自律周时，下次打开也会庆祝并弹出分享卡，卡上是上一周的日期。
+- **本周小卡**底句加半句 “Nights count on the morning you wake up.”
+- **没有睡眠数据**：30 天里一晚睡眠都没有时，Asleep 的说明小卡换成 “I can’t see your sleep yet. Wear your watch to bed and the moon shows up.”；
+  连了 Apple 健康却连续 3 天以上什么数据都没有时，Settings 的 Apple Health 组多一行，说明去「健康」App 的哪里打开权限。
+
 ## 首页的数据
 
 - 食物气泡：每次 ≥ 20 分钟的运动（最多两个，图标是运动类型）、≥ 1 万步、昨晚的入睡、有 Whoop 时的当天 strain。点一下入账；
   Settings → Test build →「Grow the food back」可以把今天吃过的还回来（Live 数据下已经加上的宠物经验不退）。
-- 休息：Whoop 用户直接用 Whoop 恢复分；Apple 用 HRV 对比自己过去 30 天（60%）+ 睡眠时长（40%）估算，界面叫 Rest。
-- 估算公式在 `Packages/PetCore/Sources/PetCore/DailyMetrics.swift`，有单元测试（Linux 上也能跑：`cd Packages/PetCore && swift test`）。
+- 状态区：入睡时间（Apple 健康的第一段睡眠开始，或 Whoop 的睡眠开始）；Apple Watch 用户是昨晚睡眠时长，Whoop 用户是 Whoop 恢复分。都是原值，App 不估算。
+- 规则在 `Packages/PetCore` 里，有单元测试（Linux 上也能跑：`cd Packages/PetCore && swift test`）。
 
 ## 还没做
 

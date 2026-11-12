@@ -3,14 +3,15 @@ import PetCore
 
 /// Today (v3.4, decided 2026-11-09): the numbers. Under the title, the date; Asleep with its time,
 /// target and hours; the longest workout with distance and pace; steps of 10k; this week's cells
-/// with what is left; Rest with its bar and percentage. A tag says which tally a record went
+/// with what is left; for Whoop users, Whoop's recovery with its bar and percentage (Apple Watch
+/// users have no such row: nothing is estimated, PRD v0.3). A tag says which tally a record went
 /// into (✓ Early night, ✓ Workout), grey until its bubble on home is eaten (点击 = 入账). Every card
 /// explains itself with a tap. Share sits top right; last night can be taken as the leave night.
 struct TodayScreen: View {
     @Environment(AppModel.self) private var model
     @State private var note: Note?
 
-    private enum Note: Hashable { case asleep, workout, steps, week, rest }
+    private enum Note: Hashable { case asleep, workout, steps, week, recovery }
 
     var body: some View {
         PageScroll {
@@ -39,8 +40,14 @@ struct TodayScreen: View {
                 .explains(.week, $note) {
                     WeekNote(cells: model.weekCells, bedtime: SleepSchedule.clock(model.sleepSchedule.bedtimeMinutes))
                 }
-            restCard
-                .explains(.rest, $note) { restNote }
+            // Whoop users only: Apple Watch has no recovery an app can read, and last night's
+            // sleep is already in the Asleep card (PRD v0.3 「只读原值」).
+            if model.isWhoopUser {
+                recoveryCard
+                    .explains(.recovery, $note) {
+                        InfoNote("Recovery · WHOOP", "Your WHOOP recovery today, as WHOOP scored it.")
+                    }
+            }
         }
         #if DEBUG
         // For screenshots: -hp3dBookAll YES eats today's food, to show the tags once booked.
@@ -82,7 +89,9 @@ struct TodayScreen: View {
 
     @ViewBuilder
     private var asleepNote: some View {
-        if model.sleptOnTime, let onset = day?.sleepOnset {
+        if !model.hasSleepData && day?.sleepOnset == nil {
+            InfoNote("Asleep", AppModel.noSleepLine)
+        } else if model.sleptOnTime, let onset = day?.sleepOnset {
             InfoNote("Early night", "Asleep within 30 minutes of your \(target) target. \(Format.time(onset)) counts. Five a week fill the moon row below.")
         } else {
             InfoNote("Asleep", "When your watch saw you fall asleep. Within 30 minutes of your \(target) target counts as an early night.")
@@ -175,7 +184,7 @@ struct TodayScreen: View {
         .accessibilityElement(children: .combine)
     }
 
-    // MARK: - This week, rest
+    // MARK: - This week, Whoop recovery
 
     private var weekCard: some View {
         let cells = model.weekCells
@@ -209,34 +218,26 @@ struct TodayScreen: View {
         }
     }
 
-    /// Apple users: our own estimate, called Rest. Whoop users: Whoop's recovery, marked WHOOP.
-    private var restCard: some View {
-        let whoop = model.restIsWhoop
+    /// Whoop's recovery as Whoop scored it, marked WHOOP.
+    private var recoveryCard: some View {
+        let recovery = model.whoopRecovery
         return HStack(spacing: 12) {
-            Label { Text(whoop ? "Recovery" : "Rest") } icon: { Image(systemName: "battery.75percent") }
+            Label { Text("Recovery") } icon: { Image(systemName: "battery.75percent") }
                 .font(.rounded(15, .semibold))
                 .foregroundStyle(Jade.ink)
                 .fixedSize()
-            if whoop {
-                Text("WHOOP")
-                    .font(.system(size: 9, weight: .medium))
-                    .tracking(1.2)
-                    .foregroundStyle(Jade.ink3)
-            }
-            Track(fraction: (model.rest ?? 0) / 100, color: Jade.sleep)
-            Text(model.rest.map { "\(Int($0.rounded()))%" } ?? "–")
+            Text("WHOOP")
+                .font(.system(size: 9, weight: .medium))
+                .tracking(1.2)
+                .foregroundStyle(Jade.ink3)
+            Track(fraction: (recovery ?? 0) / 100, color: Jade.sleep)
+            Text(recovery.map { "\(Int($0.rounded()))%" } ?? "–")
                 .font(.rounded(17, .bold))
                 .foregroundStyle(Jade.ink)
                 .monospacedDigit()
         }
         .card()
         .accessibilityElement(children: .combine)
-    }
-
-    private var restNote: some View {
-        model.restIsWhoop
-            ? InfoNote("Recovery · WHOOP", "Your Whoop recovery for today, from WHOOP.")
-            : InfoNote("Rest", "How recovered you are, from last night’s sleep and heart rate, against your own last 30 days.")
     }
 }
 

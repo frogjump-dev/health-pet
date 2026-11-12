@@ -230,6 +230,11 @@ public struct ActivityTracker: Sendable {
 }
 
 extension HealthSnapshot {
+    /// Anything at all was recorded this day: steps, sleep, a workout or a Whoop score.
+    public var hasAnyData: Bool {
+        steps != nil || sleepOnset != nil || sleepHours != nil || !allWorkouts.isEmpty || vendorRecovery != nil
+    }
+
     /// The day's workouts; older snapshots only kept the longest one.
     public var allWorkouts: [WorkoutSession] {
         if let workouts { return workouts }

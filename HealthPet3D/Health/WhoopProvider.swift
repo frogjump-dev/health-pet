@@ -70,6 +70,10 @@ struct WhoopProvider: HealthDataProvider {
         var vendorRecovery: Double?
         var strain: Double?
         var sleepPerformance: Double?
+        /// Start and end of the night's main sleep as Whoop recorded it (ISO 8601). The app reads
+        /// these as they are (PRD v0.3 「只读原值」); `SnapshotMerger` prefers them for Whoop users.
+        var sleepOnset: String?
+        var wakeTime: String?
 
         var snapshot: HealthSnapshot? {
             guard let date = WhoopProvider.dayFormatter.date(from: day) else { return nil }
@@ -81,9 +85,18 @@ struct WhoopProvider: HealthDataProvider {
                 hrvMethod: hrvMethod,
                 restingHeartRate: restingHeartRate,
                 vendorRecovery: vendorRecovery,
+                sleepOnset: sleepOnset.flatMap(WhoopProvider.instant),
+                wakeTime: wakeTime.flatMap(WhoopProvider.instant),
                 strain: strain,
                 sleepPerformance: sleepPerformance
             )
         }
+    }
+
+    /// Whoop sends "2026-11-11T22:48:12.345Z"; the database hands it back as "…+00:00".
+    static func instant(_ text: String) -> Date? {
+        let withFraction = ISO8601DateFormatter()
+        withFraction.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return withFraction.date(from: text) ?? ISO8601DateFormatter().date(from: text)
     }
 }

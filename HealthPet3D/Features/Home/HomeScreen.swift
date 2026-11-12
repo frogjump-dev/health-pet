@@ -2,7 +2,8 @@ import SwiftUI
 import PetCore
 
 /// Home (v3.4): pet name, the week (Monday first, run / moon icons), the living pet on its flat
-/// oval with today's food bubbles around it (B 轻泡), the status area (Asleep, Rest) and this
+/// oval with today's food bubbles around it (B 轻泡), the status area (Asleep, Slept or Whoop's
+/// recovery) and this
 /// week's cells, and the dock (Pets · Today · Memories, with their names).
 /// A tap on a bubble books it (点击 = 入账, PRD v0.2 §4.4); rows and days explain themselves with
 /// a tap; the first time, the pet shows the user around.
@@ -21,6 +22,8 @@ struct HomeScreen: View {
     @State private var onScreen = false
     /// The 自律周 share card, offered the moment the week counts.
     @State private var weekCard = false
+    /// The week on that card: this one, or last week when it only counted on Monday at 04:00.
+    @State private var cardWeek: WeekProgress?
     /// During the wake-up the bubbles wait, then grow.
     @State private var foodHidden = false
 
@@ -43,7 +46,7 @@ struct HomeScreen: View {
     @State private var tour: TourStep?
     @State private var tourTask: Task<Void, Never>?
 
-    private enum Note: Hashable { case asleep, rest, week }
+    private enum Note: Hashable { case asleep, second, week }
 
     /// The status area, this week's cells and the calendar row, as shown.
     private struct Shown {
@@ -83,11 +86,11 @@ struct HomeScreen: View {
         .background(Jade.canvas.ignoresSafeArea())
         .toolbar(.hidden, for: .navigationBar)
         .sensoryFeedback(.impact(weight: .light), trigger: bites)
-        .sheet(isPresented: $weekCard) { WeekAchievedSheet() }
+        .sheet(isPresented: $weekCard) { WeekAchievedSheet(week: cardWeek) }
         .onAppear {
             #if DEBUG
             if UserDefaults.standard.bool(forKey: "hp3dRegrow") { model.regrowFood() }
-            if UserDefaults.standard.bool(forKey: "hp3dWeekCard") { weekCard = true }
+            if UserDefaults.standard.bool(forKey: "hp3dWeekCard") { cardWeek = nil; weekCard = true }
             #endif
             onScreen = true
             greet()
@@ -104,7 +107,7 @@ struct HomeScreen: View {
         .onChange(of: home.onboarded) { greet() }
         .onChange(of: stage.tapCount) {
             guard onScreen else { return }
-            say(stage.lastTapMode == "awake" ? model.petLine() : "Mm… so sleepy.")
+            say(stage.lastTapMode == "awake" ? model.petLine(energy: energy) : "Mm… so sleepy.")
         }
         #if DEBUG
         .task(id: stage.isReady) { await debugLaunch() }
@@ -192,8 +195,9 @@ struct HomeScreen: View {
     }
 
     private func stageConfig(pet: Pet3D, box: PetStageConfig.Box) -> PetStageConfig {
-        PetStageConfig(pet: pet.id, rug: true, dark: scheme == .dark, bedtime: model.petState.isAsleep,
-                       mood: model.stageMood, energy: energy.rawValue, box: box)
+        // No daily mood any more (PRD v0.3): how the pet idles follows only its energy.
+        PetStageConfig(pet: pet.id, rug: true, dark: scheme == .dark, bedtime: model.isPetAsleep,
+                       energy: energy.rawValue, box: box)
     }
 
     private func bubbleColor(_ kind: FoodBubble.Kind) -> Color {
@@ -312,10 +316,12 @@ struct HomeScreen: View {
                 .noteHighlight(note == .asleep)
                 .onTapGesture { open(.asleep) }
                 .infoNote(isPresented: noteShown(.asleep)) { asleepNote }
-            RestRow(status: shown.status)
-                .noteHighlight(note == .rest)
-                .onTapGesture { open(.rest) }
-                .infoNote(isPresented: noteShown(.rest)) { restNote }
+            Group {
+                if shown.status.whoop { RecoveryRow(status: shown.status) } else { SleptRow(status: shown.status) }
+            }
+            .noteHighlight(note == .second)
+            .onTapGesture { open(.second) }
+            .infoNote(isPresented: noteShown(.second)) { secondNote }
             WeekRow(cells: shown.cells, workoutPulses: workoutPulses, nightPulses: nightPulses)
                 .noteHighlight(note == .week)
                 .onTapGesture { open(.week) }
@@ -337,14 +343,19 @@ struct HomeScreen: View {
     private var asleepNote: some View {
         let target = SleepSchedule.clock(model.sleepSchedule.targets(nightEnding: Date()).bed)
         let onset = model.homeStatus.onset
+        // No sleep at all in 30 days (no watch at night): say how the moon comes (PRD v0.3 §6).
+        guard model.hasSleepData || onset != nil else {
+            return InfoNote("Asleep", AppModel.noSleepLine)
+        }
         return InfoNote(onset.map { "Asleep \($0)" } ?? "Asleep",
                         "When your watch saw you fall asleep. Your target is \(target); within 30 minutes counts as on time and lights the ✓.")
     }
 
-    private var restNote: some View {
-        model.restIsWhoop
-            ? InfoNote("Recovery · WHOOP", "Your Whoop recovery for today. Just a bar here; the number is in Today.")
-            : InfoNote("Rest", "How recovered you are, from last night’s sleep and heart rate, against your own last 30 days. Just a bar, no score.")
+    private var secondNote: some View {
+        let status = model.homeStatus
+        return status.whoop
+            ? InfoNote("Recovery · WHOOP", "Your WHOOP recovery today. Just a bar here; the number is in Today.")
+            : InfoNote(status.slept.map { "Slept \($0)" } ?? "Slept", "Time asleep last night, as your watch recorded it.")
     }
 
     // MARK: - The tour (v3.4)
@@ -384,7 +395,7 @@ struct HomeScreen: View {
     private var tourOverlay: some View {
         if let tour, tour != .tryIt, let hole = tourHole(tour) {
             TourOverlay(step: tour, hole: hole, captionBelow: tour == .bubbles, skipAt: spots["more"],
-                        petName: model.mainPet3D.name, next: nextTourStep, skip: endTour)
+                        petName: model.mainPet3D.name, whoop: model.isWhoopUser, next: nextTourStep, skip: endTour)
         }
     }
 
@@ -436,7 +447,7 @@ struct HomeScreen: View {
             }
             return
         }
-        guard !model.petState.isAsleep else { return }
+        guard !model.isPetAsleep else { return }
 
         var moments: [Moment] = []
         var start = 0.0
@@ -467,8 +478,16 @@ struct HomeScreen: View {
             moments.append(Moment(expression: "starry", line: newPets.count == 1 ? "\(first.name) joined you!" : "\(newPets.count) new pets!"))
         }
 
-        let weekDone = model.week.map { $0.isDisciplined && home.takeWeekCelebration(weekStart: $0.weekStart) } ?? false
+        // Last week first: it may only have counted at 04:00 on Monday, while the phone was
+        // asleep, and still deserves its cheer and its card (dated last week). Only weeks the user
+        // already had the pet in are celebrated.
+        let doneWeek = [model.previousWeek, model.week].compactMap { $0 }.first { week in
+            let weekEnd = Calendar.current.date(byAdding: .day, value: 7, to: week.weekStart) ?? week.weekStart
+            return week.isDisciplined && model.store.adoptedOn < weekEnd && home.takeWeekCelebration(weekStart: week.weekStart)
+        }
+        let weekDone = doneWeek != nil
         if weekDone {
+            cardWeek = doneWeek?.weekStart == model.week?.weekStart ? nil : doneWeek
             moments.append(Moment(expression: "cheer", line: "Disciplined week ✓"))
             if model.disciplinedWeekTotal == 1 {
                 moments.append(Moment(expression: "love", line: "Our first disciplined week!"))
@@ -562,7 +581,7 @@ struct HomeScreen: View {
     #if DEBUG
     /// For screenshots on the simulator, once the pet is ready:
     /// -hp3dFeed all (or a bubble kind: workout, steps, night, load) eats the bubbles one by one;
-    /// -hp3dTour 1|2|3|tryit shows that tour step; -hp3dNote asleep|rest|week|day opens that note.
+    /// -hp3dTour 1|2|3|tryit shows that tour step; -hp3dNote asleep|slept|week|day opens that note.
     private func debugLaunch() async {
         guard stage.isReady else { return }
         let defaults = UserDefaults.standard
@@ -575,7 +594,7 @@ struct HomeScreen: View {
             try? await Task.sleep(for: .seconds(3))
             switch which {
             case "asleep": note = .asleep
-            case "rest": note = .rest
+            case "rest", "slept": note = .second
             case "week": note = .week
             default:
                 // A day only has a note once something is booked; on a Monday morning nothing is.
