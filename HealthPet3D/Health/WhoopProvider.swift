@@ -8,7 +8,7 @@ enum WhoopError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .backendNotConfigured: "Whoop needs the HealthPet server, which isn't set up in this build."
+        case .backendNotConfigured: "Whoop needs the Ovenpals server, which isn't set up in this build."
         case .notConnected: "Whoop isn't connected."
         case .connectFailed: "Couldn't connect Whoop. Please try again."
         }

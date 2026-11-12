@@ -37,18 +37,21 @@ targets:
     info:
       path: HealthPet3D/Resources/Info.plist
       properties:
-        CFBundleDisplayName: HealthPet 3D
+        CFBundleDisplayName: Ovenpals
         CFBundleShortVersionString: "0.3.0"
         CFBundleVersion: "1"
         UILaunchScreen:
           UIColorName: LaunchCanvas
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
         NSHealthShareUsageDescription: "Your pet reads your steps, workouts, active energy, sleep and heart rate variability to show your day and how rested you are. Data stays on your phone."
-        NSHealthUpdateUsageDescription: "HealthPet does not write to Apple Health."
+        NSHealthUpdateUsageDescription: "Ovenpals does not write to Apple Health."
         NSPhotoLibraryAddUsageDescription: "Save your share cards to Photos."
         # Settings → About opens these once they exist (https:// or mailto:); empty = "Soon".
         PrivacyPolicyURL: ""
         FeedbackURL: ""
+        # The searchable line at the bottom of share cards: a short link once there is one
+        # (e.g. "ovenpals.app"); empty = "iPhone app" under the name (PRD v0.3 §6).
+        ShareLinkText: ""
         SupabaseProjectRef: $(SUPABASE_PROJECT_REF)
         SupabaseAnonKey: $(SUPABASE_ANON_KEY)
     entitlements:

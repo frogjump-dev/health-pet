@@ -355,10 +355,10 @@ private struct RowDivider: View {
 }
 
 extension Bundle {
-    /// The app's name under its icon ("HealthPet 3D"), as the Health app lists it.
+    /// The app's name under its icon ("Ovenpals"), as the Health app lists it.
     var displayName: String {
         object(forInfoDictionaryKey: "CFBundleDisplayName") as? String
-            ?? object(forInfoDictionaryKey: "CFBundleName") as? String ?? "HealthPet"
+            ?? object(forInfoDictionaryKey: "CFBundleName") as? String ?? "Ovenpals"
     }
 
     /// "0.3.0 (1)": the version and the build.

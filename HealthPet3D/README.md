@@ -1,6 +1,6 @@
 # HealthPet 3D（3D方案 · 测试版）
 
-现在仓库里唯一的 App（Bundle ID `com.healthpet.app3d`，桌面名字「HealthPet 3D」）。2D 版 HealthPet 已在 2026-11-08 停用，见仓库根目录 README。
+现在仓库里唯一的 App（Bundle ID `com.healthpet.app3d`，桌面名字「Ovenpals」；HealthPet 只是内部代号，target 和目录名还叫 HealthPet3D）。2D 版 HealthPet 已在 2026-11-08 停用，见仓库根目录 README。
 界面是最终版 v3「干净版」· Mountain Jade 配色（白天）/ 森林夜（黑夜），宠物是 3D方案 的切片宠物，带 26 个表情。
 
 ## 在 Mac 上跑起来
@@ -152,6 +152,17 @@ PRD v0.3 §10.3「已定、还没做」分四批做，这是第 1 批「只读�
 - **主页**：Asleep 行不再有空心圈（入账后直接出勾）；底栏中间的 Today 图标换成三根小柱，三个名字都是次要灰。
 - **Pets**：「还能遇见谁」那格只写 Still to meet，不写数量；宠物页的 Dress up 先藏起来。
 - **Settings → About**：版本号、隐私政策、意见反馈。链接在 `project.yml` 的 `PrivacyPolicyURL` / `FeedbackURL`，空着时显示 Soon。
+
+### 第 3 批：改名 Ovenpals、分享卡（2026-11-12）
+
+- **桌面名 Ovenpals**（`project.yml` 的 `CFBundleDisplayName`）。target、scheme、目录名都还叫 HealthPet3D，用户看不到。
+- **分享卡**：底部的 HealthPet 换成 Ovenpals，下面加一行让别人找得到 App：有短链接后写短链接（`project.yml` 的 `ShareLinkText`，
+  比如 `ovenpals.app`），没有之前写 “iPhone app”。系统分享面板的预览名也是 Ovenpals。卡片高 446 → 456 pt。
+- **9:16 竖版**：Share 页圆点下面多了 Card / 9:16 两个小按钮。9:16 导出 1080 × 1920，卡片缩到 86 % 放在正中，
+  避开快拍上下的按钮区。选了哪个会记住。达成自律周时自动弹出的那张仍是卡片。
+- **健康权限说明**：写入那条改成 “Ovenpals does not write to Apple Health.”。读取那条和首次打开的 Heart rate 一行先不动
+  （2026-11-12 用户定：HRV / 静息心率照读，文字不改）。
+- 服务器出错时的提示里的 HealthPet 也换成 Ovenpals。
 
 ## 首页的数据
 

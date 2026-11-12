@@ -16,7 +16,7 @@ final class Backend: @unchecked Sendable {
 
         var errorDescription: String? {
             switch self {
-            case .http(let status): "The HealthPet server answered with an error (\(status))."
+            case .http(let status): "The Ovenpals server answered with an error (\(status))."
             }
         }
     }
