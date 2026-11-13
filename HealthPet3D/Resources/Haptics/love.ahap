@@ -1,0 +1,59 @@
+{
+  "Version": 1.0,
+  "Metadata": {
+    "Project": "Ovenpals",
+    "Created": "2026-11-13",
+    "Description": "喜欢你 love.wav: a light buzz swelling up over 0.16 s, then the heart pops (light)"
+  },
+  "Pattern": [
+    {
+      "Event": {
+        "Time": 0.0,
+        "EventType": "HapticContinuous",
+        "EventDuration": 0.16,
+        "EventParameters": [
+          {
+            "ParameterID": "HapticIntensity",
+            "ParameterValue": 0.3
+          },
+          {
+            "ParameterID": "HapticSharpness",
+            "ParameterValue": 0.2
+          }
+        ]
+      }
+    },
+    {
+      "ParameterCurve": {
+        "ParameterID": "HapticIntensityControl",
+        "Time": 0.0,
+        "ParameterCurveControlPoints": [
+          {
+            "Time": 0.0,
+            "ParameterValue": 0.0
+          },
+          {
+            "Time": 0.16,
+            "ParameterValue": 1.0
+          }
+        ]
+      }
+    },
+    {
+      "Event": {
+        "Time": 0.18,
+        "EventType": "HapticTransient",
+        "EventParameters": [
+          {
+            "ParameterID": "HapticIntensity",
+            "ParameterValue": 0.6
+          },
+          {
+            "ParameterID": "HapticSharpness",
+            "ParameterValue": 0.4
+          }
+        ]
+      }
+    }
+  ]
+}

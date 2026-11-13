@@ -25,7 +25,8 @@ struct GiftReveal: Identifiable, Equatable {
 /// The gift card (D06, D07, D11, D12): a box that wobbles every 2.2 s until it is tapped open;
 /// the lid flies off (0.45 s), the item pops out (0.55 s) with 14 confetti dots (0.8 s); then its
 /// name, its slot and how many are collected, and Wear on 〈pet〉 / Later. Reduce Motion: no
-/// wobble or confetti, the item simply fades in. A success tap when it opens.
+/// wobble or confetti, the item simply fades in. A success tap when it opens. Sounds (PRD v0.3
+/// §8.4): the box lands, its beads rattle with each wobble, the lid pops open.
 struct GiftSheet: View {
     let gift: GiftReveal
     /// After this gift.
@@ -56,7 +57,9 @@ struct GiftSheet: View {
             card
                 .transition(.scale(scale: 0.92).combined(with: .opacity))
         }
-        .sensoryFeedback(.success, trigger: opens)
+        .sensoryFeedback(.success, trigger: opens) { _, _ in FeelSettings.haptics }
+        // the box lands as the card comes up (PRD v0.3 §8.4)
+        .onAppear { Cues.giftDrop.play(after: 0.2) }
         #if DEBUG
         // simulator screenshots: -hp3dGiftOpen YES opens the box by itself
         .task {
@@ -123,6 +126,8 @@ struct GiftSheet: View {
                 try? await Task.sleep(for: .seconds(2.2))
                 if opened { return }
                 wobble += 1
+                // the beads rattle in the box with each wobble
+                Cues.giftShake.play()
             }
         }
     }
@@ -130,6 +135,7 @@ struct GiftSheet: View {
     private func open() {
         guard !opened else { return }
         opens += 1
+        Cues.giftOpen.play()
         onOpen()
         if reduceMotion {
             opened = true

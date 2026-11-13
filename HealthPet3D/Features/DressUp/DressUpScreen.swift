@@ -64,7 +64,7 @@ struct DressUpScreen: View {
             }
         }
         .animation(.easeOut(duration: 0.25), value: gift)
-        .sensoryFeedback(.selection, trigger: wardrobe.outfit(for: pet.id))
+        .sensoryFeedback(.selection, trigger: wardrobe.outfit(for: pet.id)) { _, _ in FeelSettings.haptics }
         // leaving: the new look's pictures for the Pets tile and share cards are taken now
         .onDisappear {
             let outfit = wardrobe.outfit(for: pet.id)
@@ -171,7 +171,10 @@ struct DressUpScreen: View {
     private func noneTile(_ pet: Pet3D, worn: Decor?) -> some View {
         Button {
             note = nil
-            if worn != nil { model.dressUp.takeOff(slot, from: pet.id) }
+            if worn != nil {
+                model.dressUp.takeOff(slot, from: pet.id)
+                Cues.wearOff.play()
+            }
         } label: {
             tileFace(selected: worn == nil) {
                 Image(systemName: "nosign")
@@ -195,8 +198,10 @@ struct DressUpScreen: View {
             note = nil
             if worn {
                 model.dressUp.takeOff(decor.slot, from: pet.id)
+                Cues.wearOff.play()
             } else {
                 model.dressUp.wear(decor.id, on: pet.id)
+                Cues.wearOn(decor.slot.rawValue).play()
                 PetStage.shared.react("mirror")
             }
         } label: {
@@ -339,6 +344,8 @@ struct DressUpScreen: View {
 
     private func draw(for pet: Pet3D) {
         guard wardrobe.canDraw, let id = model.dressUp.draw() else {
+            // not enough points yet: a soft "pf" and the note on how points come, never an error
+            Cues.softNo.play()
             note = .draw
             return
         }
@@ -358,7 +365,10 @@ struct DressUpScreen: View {
     }
 
     private func wearGift(_ gift: GiftReveal, on pet: Pet3D) {
-        if let decor = Decor.with(id: gift.item) { slot = decor.slot }
+        if let decor = Decor.with(id: gift.item) {
+            slot = decor.slot
+            Cues.wearOn(decor.slot.rawValue).play()
+        }
         model.dressUp.wear(gift.item, on: pet.id)
         self.gift = nil
         PetStage.shared.react("mirror")

@@ -113,15 +113,19 @@ struct FirstOpenScreen: View {
             .padding(.top, 24)
             Spacer(minLength: 8)
             // 拜托 (PRD §5.3): Toast asks nicely before the system's Health sheet
+            // up to 150 pt, smaller when the page is short (large text): the words come first
             livePet
-                .frame(width: 150, height: 150)
+                .aspectRatio(1, contentMode: .fit)
+                .frame(maxWidth: 150, maxHeight: 150)
                 .frame(maxWidth: .infinity)
+                .layoutPriority(-1)
                 .onAppear { PetStage.shared.react("please", pet: Pet3D.toast.id) }
             Spacer(minLength: 8)
             Text("Everything is worked out on your phone. Your health data never leaves it, and you can turn any of these off in the Health app.")
                 .scaledFont(12, .medium)
                 .foregroundStyle(Jade.ink2)
                 .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity)
                 .padding(.bottom, 14)
             Button {
@@ -194,7 +198,7 @@ struct FirstOpenScreen: View {
             await model.refresh()
             let left = 2.5 - Date().timeIntervalSince(started)
             if left > 0 { try? await Task.sleep(for: .seconds(left)) }
-            PetStage.shared.endHold("wait")
+            PetStage.shared.endHold("wait", found: true)
             withAnimation(.easeOut(duration: 0.3)) { progress = 1 }
             try? await Task.sleep(for: .seconds(2.2))
             step = .pets
@@ -243,6 +247,8 @@ struct FirstOpenScreen: View {
                 .buttonStyle(PillButtonStyle(primary: true))
         }
         .accessibilityElement(children: .contain)
+        // the pets you've already met: the same sparkle as a new pet joining (PRD v0.3 §8.4)
+        .onAppear { Cues.newPet.play(after: 0.3) }
     }
 
     /// No pets from the last 30 days: no page of its own, just a word from Toast (and, without any
