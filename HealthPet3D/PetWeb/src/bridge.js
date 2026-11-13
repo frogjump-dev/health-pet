@@ -28,6 +28,15 @@ let baseCrown = 0;
 // the last moment asked for a given pet: if that pet is mounted (again) right after — a pet's page
 // opens, the main pet changes, a screen without the floor takes the pet — it plays then
 let waiting = null;
+// moments the app asked for (react, celebrate, morning, a meal's `then`), by expression id: when one
+// really starts, the app hears `expr` with asked: true and plays its sound (PRD v0.3 §8.4); the
+// moves the director picks by itself (idle, touch) stay silent
+const asked = new Map();
+const ask = (id) => asked.set(id, performance.now());
+// when the showing 等一下 started (its own clock: 0 → 2.8 s, then 1.6–2.8 s over and over while held)
+let waitStart = 0;
+// recent taps, counted like the director does: the 3rd in 1.3 s tickles, the 6th makes it dizzy
+let tapTimes = [];
 // seconds the decorations have been moving (rain, the pinwheel, jet flames); it stands still under Reduce Motion
 let clock = 0;
 
@@ -79,6 +88,16 @@ function mount() {
   decor = mountDecor(pet, { items: [] });
   decor.set(cfg.decor || []);
   dir = createDirector(pet.anchors, { timing: cfg.bedtime ? BEDTIME : AWAKE, seed: 5 });
+  const mine = dir;
+  dir.on((what) => {
+    if (what !== 'start' || dir !== mine) return;
+    const id = dir.status().showing;
+    const at = asked.get(id);
+    const wanted = at !== undefined && performance.now() - at < 30000;
+    if (at !== undefined) asked.delete(id);
+    if (id === 'wait') waitStart = performance.now();
+    post({ type: 'expr', id, asked: wanted });
+  });
   if (cfg.mood !== 'normal') dir.setMood(cfg.mood);
   if (cfg.workedOut) dir.setWorkedOut(true);
   if (cfg.still) drawStill(cfg.still);
@@ -109,9 +128,9 @@ function react(id, o = {}) {
     if (!dir || o.pet !== cfg.pet) return;
   }
   if (!dir || cfg.still) return;
-  const ask = {};
-  if (o.hold) ask.hold = true;
-  if (o.prio !== undefined) ask.prio = o.prio;
+  const opts = {};
+  if (o.hold) opts.hold = true;
+  if (o.prio !== undefined) opts.prio = o.prio;
   if (id === 'beg') {
     const st = dir.status();
     if (st.event || st.mode !== 'awake') return;
@@ -119,12 +138,13 @@ function react(id, o = {}) {
       // the same axes as the preview: -1..1 from the eyes, 30% of the page width = all the way
       const r = stage.getBoundingClientRect(), a = pet.anchors, k = window.innerWidth * 0.3;
       const ex = r.left + (a.cx / 100) * r.width, ey = r.top + (a.ey / 100) * r.height;
-      ask.aim = { x: clamp((o.at.x * window.innerWidth - ex) / k, -1, 1), y: clamp((o.at.y * window.innerHeight - ey) / k, -1, 1) };
+      opts.aim = { x: clamp((o.at.x * window.innerWidth - ex) / k, -1, 1), y: clamp((o.at.y * window.innerHeight - ey) / k, -1, 1) };
     }
   } else {
     dir.activity();
+    ask(id);
   }
-  dir.request(id, ask);
+  dir.request(id, opts);
 }
 
 /** How high the outfit reaches (a tall hat, a surfboard on the back), in the stage's 0–100 box
@@ -255,25 +275,50 @@ stage.addEventListener('pointerdown', (ev) => {
   ev.preventDefault();
   pressed = true; held = false;
   clearTimeout(holdTimer);
-  holdTimer = setTimeout(() => { held = true; dir.holdStart(); post({ type: 'hold' }); }, 450);
+  holdTimer = setTimeout(() => {
+    held = true;
+    // asleep or dozing, a press is a tap (it wakes up); awake, it is 摸摸 and the phone purrs
+    const awake = dir.status().mode === 'awake';
+    const touch = awake ? 'pat' : touchKind();
+    dir.holdStart();
+    post({ type: 'hold', touch });
+  }, 450);
 });
 stage.addEventListener('pointerup', () => {
   if (!pressed) return;
   pressed = false;
   clearTimeout(holdTimer);
-  if (held) { dir.holdEnd(); return; }
+  if (held) { dir.holdEnd(); post({ type: 'holdEnd' }); return; }
   const st = dir.status();
   if (cfg.energy === 'low' && st.mode === 'awake' && !st.event && performance.now() - cheeredAt > 60000) {
     // a low week: the first tap in a while, the pet cheers you on (给你打气)
     cheeredAt = performance.now();
     dir.request('cheerup', { prio: 2 });
-    post({ type: 'tap', mode: 'awake' });
+    tapTimes = [];
+    post({ type: 'tap', mode: 'awake', touch: 'tap' });
     return;
   }
+  const touch = touchKind();
   dir.tap();
-  post({ type: 'tap', mode: dir.status().mode });
+  post({ type: 'tap', mode: dir.status().mode, touch });
 });
-const cancel = () => { if (!pressed) return; pressed = false; clearTimeout(holdTimer); if (held) dir.holdEnd(); };
+const cancel = () => {
+  if (!pressed) return;
+  pressed = false;
+  clearTimeout(holdTimer);
+  if (held) { dir.holdEnd(); post({ type: 'holdEnd' }); }
+};
+/** What the tap about to be given is (for its haptics): yawn when asleep, tickle on the 3rd tap in
+ *  a row, dizzy on the 6th, else a plain tap. Called before dir.tap(), which keeps its own count. */
+function touchKind() {
+  const st = dir.status();
+  const now = performance.now();
+  if (st.mode !== 'awake' || st.mood === 'sad') { tapTimes = []; return st.mode === 'asleep' ? 'yawn' : 'tap'; }
+  tapTimes = tapTimes.filter((x) => now - x < 1300);
+  tapTimes.push(now);
+  if (tapTimes.length >= 6) { tapTimes = []; return 'dizzy'; }
+  return tapTimes.length === 3 ? 'tickle' : 'tap';
+}
 stage.addEventListener('pointerleave', cancel);
 stage.addEventListener('pointercancel', cancel);
 
@@ -308,14 +353,26 @@ window.Pet = {
   /** Stop drawing while the pet is off screen; start again where it was. */
   pause(on) { paused = !!on; if (!paused) run(); },
   /** First open of the day: 醒来, played to the end. */
-  morning() { dir?.morning(); },
+  morning() { if (!dir) return; ask('wakeup'); dir.morning(); },
   /** A moment that always plays to the end (cheer, starry, proud, hop, love, cheerup, confused,
    *  levelup, bigcheer, missyou, hello…), in the order asked. */
-  celebrate(id) { if (EXPR_BY_ID[id]) dir?.request(id, { prio: 3 }); },
+  celebrate(id) { if (!EXPR_BY_ID[id] || !dir) return; ask(id); dir.request(id, { prio: 3 }); },
   /** A moment at the expression's own priority (see react above): beg, nod, mirror, please, wait, gift… */
   react(id, o = {}) { react(id, o); },
-  /** 等一下 / 拆礼物 can stop waiting: the data is in, the box is opened. */
-  release(id) { if (waiting?.id === id) waiting = null; dir?.release(id); },
+  /**
+   * 等一下 / 拆礼物 can stop waiting: the data is in, the box is opened. `o.found`: when 等一下 then
+   * finds it and nods (3.2 s on its clock), the app hears `expr` 'found' to play the nod's sound.
+   */
+  release(id, o = {}) {
+    if (waiting?.id === id) waiting = null;
+    if (!dir) return;
+    if (id === 'wait' && o.found && dir.status().showing === 'wait') {
+      const e = (performance.now() - waitStart) / 1000;
+      const t = e < 2.8 ? e : 1.6 + ((e - 1.6) % 1.2);
+      setTimeout(() => post({ type: 'expr', id: 'found', asked: true }), Math.max(0, 3.2 - t) * 1000);
+    }
+    dir.release(id);
+  },
   /** Any expression, as if picked from the list. */
   play(id) { dir?.play(id); },
   /** A food bubble reached the pet's mouth. */
@@ -328,6 +385,7 @@ window.Pet = {
     if (!dir || !pet) return;
     dir.activity();
     const [mx, my] = mouthPx();
+    if (o.then && o.then !== 'yum') ask(o.then);
     feeds.push({ t: 0, x: (o.x ?? 0.5) * window.innerWidth, y: (o.y ?? 0.3) * window.innerHeight, mx, my,
       then: o.then ?? 'yum', bites: [0.81, 0.91, 1.01], done: false });
   },

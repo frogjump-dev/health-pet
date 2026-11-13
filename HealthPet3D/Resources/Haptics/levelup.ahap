@@ -1,0 +1,74 @@
+{
+  "Version": 1.0,
+  "Metadata": {
+    "Project": "Ovenpals",
+    "Created": "2026-11-13",
+    "Description": "升级 levelup.wav: three taps getting stronger, then a strong one"
+  },
+  "Pattern": [
+    {
+      "Event": {
+        "Time": 0.0,
+        "EventType": "HapticTransient",
+        "EventParameters": [
+          {
+            "ParameterID": "HapticIntensity",
+            "ParameterValue": 0.3
+          },
+          {
+            "ParameterID": "HapticSharpness",
+            "ParameterValue": 0.4
+          }
+        ]
+      }
+    },
+    {
+      "Event": {
+        "Time": 0.06,
+        "EventType": "HapticTransient",
+        "EventParameters": [
+          {
+            "ParameterID": "HapticIntensity",
+            "ParameterValue": 0.45
+          },
+          {
+            "ParameterID": "HapticSharpness",
+            "ParameterValue": 0.4
+          }
+        ]
+      }
+    },
+    {
+      "Event": {
+        "Time": 0.12,
+        "EventType": "HapticTransient",
+        "EventParameters": [
+          {
+            "ParameterID": "HapticIntensity",
+            "ParameterValue": 0.6
+          },
+          {
+            "ParameterID": "HapticSharpness",
+            "ParameterValue": 0.4
+          }
+        ]
+      }
+    },
+    {
+      "Event": {
+        "Time": 0.2,
+        "EventType": "HapticTransient",
+        "EventParameters": [
+          {
+            "ParameterID": "HapticIntensity",
+            "ParameterValue": 0.9
+          },
+          {
+            "ParameterID": "HapticSharpness",
+            "ParameterValue": 0.55
+          }
+        ]
+      }
+    }
+  ]
+}

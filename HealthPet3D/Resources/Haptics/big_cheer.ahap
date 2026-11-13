@@ -1,0 +1,42 @@
+{
+  "Version": 1.0,
+  "Metadata": {
+    "Project": "Ovenpals",
+    "Created": "2026-11-13",
+    "Description": "大庆祝 big_cheer.wav: the second jump (soft), then the trophy lands with the bell (the strongest)"
+  },
+  "Pattern": [
+    {
+      "Event": {
+        "Time": 0.0,
+        "EventType": "HapticTransient",
+        "EventParameters": [
+          {
+            "ParameterID": "HapticIntensity",
+            "ParameterValue": 0.7
+          },
+          {
+            "ParameterID": "HapticSharpness",
+            "ParameterValue": 0.15
+          }
+        ]
+      }
+    },
+    {
+      "Event": {
+        "Time": 1.1,
+        "EventType": "HapticTransient",
+        "EventParameters": [
+          {
+            "ParameterID": "HapticIntensity",
+            "ParameterValue": 1.0
+          },
+          {
+            "ParameterID": "HapticSharpness",
+            "ParameterValue": 0.55
+          }
+        ]
+      }
+    }
+  ]
+}

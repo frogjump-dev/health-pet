@@ -1,0 +1,74 @@
+{
+  "Version": 1.0,
+  "Metadata": {
+    "Project": "Ovenpals",
+    "Created": "2026-11-13",
+    "Description": "挠痒 (three taps in a row): four light taps, no sound for now (sfx 11-13)"
+  },
+  "Pattern": [
+    {
+      "Event": {
+        "Time": 0.0,
+        "EventType": "HapticTransient",
+        "EventParameters": [
+          {
+            "ParameterID": "HapticIntensity",
+            "ParameterValue": 0.35
+          },
+          {
+            "ParameterID": "HapticSharpness",
+            "ParameterValue": 0.4
+          }
+        ]
+      }
+    },
+    {
+      "Event": {
+        "Time": 0.06,
+        "EventType": "HapticTransient",
+        "EventParameters": [
+          {
+            "ParameterID": "HapticIntensity",
+            "ParameterValue": 0.35
+          },
+          {
+            "ParameterID": "HapticSharpness",
+            "ParameterValue": 0.4
+          }
+        ]
+      }
+    },
+    {
+      "Event": {
+        "Time": 0.12,
+        "EventType": "HapticTransient",
+        "EventParameters": [
+          {
+            "ParameterID": "HapticIntensity",
+            "ParameterValue": 0.35
+          },
+          {
+            "ParameterID": "HapticSharpness",
+            "ParameterValue": 0.4
+          }
+        ]
+      }
+    },
+    {
+      "Event": {
+        "Time": 0.18,
+        "EventType": "HapticTransient",
+        "EventParameters": [
+          {
+            "ParameterID": "HapticIntensity",
+            "ParameterValue": 0.35
+          },
+          {
+            "ParameterID": "HapticSharpness",
+            "ParameterValue": 0.4
+          }
+        ]
+      }
+    }
+  ]
+}

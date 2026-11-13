@@ -26,6 +26,9 @@ struct ShareScreen: View {
         return .week
     }()
     @State private var image: Image?
+    /// The toy camera clicks once, when the first picture is ready (PRD v0.3 §8.4); swiping
+    /// between cards is silent.
+    @State private var clicked = false
 
     var body: some View {
         let facts = ShareCard.Facts(model: model, home: home, showNumbers: showNumbers, showBedtimes: showBedtimes)
@@ -77,6 +80,10 @@ struct ShareScreen: View {
             await PetSnapper.shared.prepare(card.pictures)
             guard !Task.isCancelled else { return }
             image = story ? StoryPicture.render(card, scheme: scheme) : ShareCard.render(card, scheme: scheme)
+            if !clicked {
+                clicked = true
+                Cues.photo.play()
+            }
         }
     }
 }
@@ -92,6 +99,7 @@ struct WeekAchievedSheet: View {
     @AppStorage("3d.share.numbers") private var showNumbers = true
     @AppStorage("3d.share.bedtimes") private var showBedtimes = false
     @State private var image: Image?
+    @State private var clicked = false
 
     var body: some View {
         let facts = ShareCard.Facts(model: model, home: home, showNumbers: showNumbers, showBedtimes: showBedtimes, week: week)
@@ -118,6 +126,10 @@ struct WeekAchievedSheet: View {
             await PetSnapper.shared.prepare(card.pictures)
             guard !Task.isCancelled else { return }
             image = ShareCard.render(card, scheme: scheme)
+            if !clicked {
+                clicked = true
+                Cues.photo.play()
+            }
         }
     }
 }
@@ -132,6 +144,8 @@ struct ShareCardButton: View {
                 ShareLink(item: image, preview: SharePreview(Bundle.main.displayName, image: image)) {
                     Label("Share", systemImage: "square.and.arrow.up")
                 }
+                // the toy camera again as the share sheet opens (Save Image is in there)
+                .simultaneousGesture(TapGesture().onEnded { Cues.photo.play() })
             } else {
                 Button {} label: { Label("Share", systemImage: "square.and.arrow.up") }.disabled(true)
             }

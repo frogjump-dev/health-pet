@@ -180,7 +180,10 @@ final class PetStage {
     }
 
     private func updatePause() {
-        run("Pet.pause(\(owner == nil || !appActive))")
+        let paused = owner == nil || !appActive
+        // a finger still on the pet when it goes away never says it let go
+        if paused { Haptics.shared.stopPurr() }
+        run("Pet.pause(\(paused))")
     }
 
     // MARK: - The pet
@@ -200,8 +203,9 @@ final class PetStage {
         if hold { options.append("hold: true") }
         run("Pet.react('\(id)', {\(options.joined(separator: ", "))})")
     }
-    /// 等一下 has its data, 拆礼物 its box opened: the expression plays on to its end.
-    func endHold(_ id: String) { run("Pet.release('\(id)')") }
+    /// 等一下 has its data, 拆礼物 its box opened: the expression plays on to its end. `found`:
+    /// 等一下's nod at the end gets the nod's sound (the first open's 30 days are in).
+    func endHold(_ id: String, found: Bool = false) { run("Pet.release('\(id)'\(found ? ", {found: true}" : ""))") }
     /// 眼巴巴: the pet eyes the food bubble at `point` (fractions of the pet's page), when it is
     /// awake and doing nothing else.
     func beg(toward point: CGPoint) {
@@ -253,6 +257,15 @@ final class PetStage {
         case "tap":
             lastTapMode = message["mode"] as? String ?? "awake"
             tapCount += 1
+            Cues.touched(message["touch"] as? String ?? "tap")
+        case "hold":
+            // 摸摸 purrs while the finger stays; a press on a sleeping pet is a tap
+            if let touch = message["touch"] as? String, touch != "pat" { Cues.touched(touch) } else { Haptics.shared.startPurr() }
+        case "holdEnd":
+            Haptics.shared.stopPurr()
+        case "expr":
+            // an expression really started: the moments the app asked for have a sound (PRD v0.3 §8.4)
+            if let id = message["id"] as? String { Cues.expressionStarted(id, asked: message["asked"] as? Bool ?? false) }
         case "error":
             log("page error: \(message["message"] as? String ?? "?")")
         default:
@@ -307,7 +320,7 @@ private struct WeakHost {
     weak var view: PetHostView?
 }
 
-/// Hears the page (ready / drawn / tap / hold / error) and its navigation; kept apart from the
+/// Hears the page (ready / drawn / outfit / tap / hold / holdEnd / expr / error) and its navigation; kept apart from the
 /// stage because WebKit retains its message handlers.
 private final class PetPageHandler: NSObject, WKScriptMessageHandler, WKNavigationDelegate {
     weak var stage: PetStage?

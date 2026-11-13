@@ -107,7 +107,7 @@ struct HomeScreen: View {
         .animation(.easeOut(duration: 0.25), value: gift)
         .background(Jade.canvas.ignoresSafeArea())
         .toolbar(.hidden, for: .navigationBar)
-        .sensoryFeedback(.impact(weight: .light), trigger: bites)
+        .sensoryFeedback(.impact(weight: .light), trigger: bites) { _, _ in FeelSettings.haptics }
         .sheet(isPresented: $weekCard) { WeekAchievedSheet(week: cardWeek) }
         .onAppear {
             #if DEBUG
@@ -280,6 +280,9 @@ struct HomeScreen: View {
         withAnimation(.easeOut(duration: 0.2)) { line = nil }
 
         stage.feed(at: CGPoint(x: at.x / layout.size.width, y: at.y / layout.size.height), then: feedback.expression)
+        // 啵 as the jelly bursts, then the crumbs going in (PRD v0.3 §8.4); the cell's note when the dot lands
+        Cues.pop.play()
+        Cues.nibble.play(after: 0.76)
 
         let landing = landingSpot(feedback, before: before, after: after)
         let origin = scene.origin
@@ -317,8 +320,13 @@ struct HomeScreen: View {
         if tour == .tryIt { tour = nil }
         note = nil
         selectedDay = nil
+        let before = model.weekCells
         let feedback = withAnimation(.easeOut(duration: 0.3)) { model.book(bubble.credit) }
         stage.feed(at: CGPoint(x: at.x / layout.size.width, y: at.y / layout.size.height), then: feedback.expression)
+        // only 啵 and the cell's note 0.3 s later, no chewing; two taps (the swallow's and the cell's)
+        Cues.pop.play(haptics: false)
+        let (cell, gain) = landingCue(landingSpot(feedback, before: before, after: model.weekCells))
+        cell.play(after: 0.3, gain: gain)
         bites += 1
         lastBite = Date()
         if let tag = feedback.tag { say(tag) }
@@ -381,9 +389,21 @@ struct HomeScreen: View {
         }
     }
 
+    /// The note of what the dot lands on (PRD v0.3 §8.4): the workout cells climb C6 D6 E6 on the
+    /// toy xylophone, the nights G6 to E7 on the music box (the leave night too), so a full week
+    /// is a tune; a cell lit already only flashes, 6 dB lower. Memories: a neutral note.
+    private func landingCue(_ landing: Landing) -> (Cue, Float) {
+        if landing.spot == "memories" { return (Cues.toMemories, 1) }
+        let number = (Int(landing.spot.dropFirst()) ?? 0) + 1
+        let cue = landing.spot.hasPrefix("w") ? Cues.workoutCell(number) : Cues.nightCell(number)
+        return (cue, landing.fills ? 1 : 0.5)
+    }
+
     /// The dot is in: the held rows let go (the cell fills, the moon's check lights, today's
     /// calendar icon appears), and whatever it landed on bumps.
     private func land(_ landing: Landing) {
+        let (cell, gain) = landingCue(landing)
+        cell.play(gain: gain)
         inFlight -= 1
         if inFlight == 0 {
             withAnimation(.easeOut(duration: 0.4)) { held = nil }
@@ -671,6 +691,7 @@ struct HomeScreen: View {
     private func putOn(_ gift: GiftReveal) {
         let pet = model.mainPet3D
         model.dressUp.wear(gift.item, on: pet.id)
+        if let decor = Decor.with(id: gift.item) { Cues.wearOn(decor.slot.rawValue).play() }
         model.dressUp.justWorn = (pet.id, gift.item)
         self.gift = nil
         router.path = [.pets, .pet(pet.id)]

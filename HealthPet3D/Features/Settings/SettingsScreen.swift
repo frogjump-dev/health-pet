@@ -2,13 +2,15 @@ import SwiftUI
 import PetCore
 
 /// Settings, from home's 「…」: data sources, sleep targets (half-hour steps, weekends apart), the
-/// two notifications, appearance, the clock style, name on share cards, About (version, privacy
-/// policy, feedback), and a few switches for trying the test build (demo data, the pet's energy,
-/// replay the wake-up or the first open, regrow food).
+/// two notifications, appearance, the clock style, name on share cards, sounds and haptics, About
+/// (version, privacy policy, feedback), and a few switches for trying the test build (demo data,
+/// the pet's energy, replay the wake-up or the first open, regrow food).
 /// Built from the v3 cards rather than a Form, so it scrolls like every other page.
 struct SettingsScreen: View {
     @Environment(AppModel.self) private var model
     @Environment(HomeState.self) private var home
+    @AppStorage(FeelSettings.soundKey) private var soundEffects = true
+    @AppStorage(FeelSettings.hapticsKey) private var haptics = true
 
     var body: some View {
         @Bindable var model = model
@@ -83,6 +85,16 @@ struct SettingsScreen: View {
                     .textInputAutocapitalization(.words)
                     .scaledFont(16, .medium)
                     .foregroundStyle(Jade.ink)
+                    .frame(minHeight: 54)
+            }
+
+            // PRD v0.3 §8.4: the app's own sounds and taps, each on its own; the ring/silent
+            // switch still mutes the sounds, and notifications follow iOS
+            SettingsGroup("Sounds & Haptics") {
+                Toggle(isOn: $soundEffects) { SettingsLabel("Sound effects") }
+                    .frame(minHeight: 54)
+                RowDivider()
+                Toggle(isOn: $haptics) { SettingsLabel("Haptics") }
                     .frame(minHeight: 54)
             }
 

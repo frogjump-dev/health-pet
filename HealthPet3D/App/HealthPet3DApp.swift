@@ -18,6 +18,8 @@ struct HealthPet3DApp: App {
         // One living pet for the whole app, started now so it is ready when home asks (PRD §9 D1).
         PetStage.shared.warmUp(PetStageConfig(pet: model.mainPet3D.id, rug: true,
                                               energy: (home.energyOverride ?? model.energy).rawValue))
+        // the sounds are read now, so the first tap on a bubble already has its pop (PRD v0.3 §8.4)
+        Sounds.shared.prepare()
     }
 
     var body: some Scene {
