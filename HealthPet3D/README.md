@@ -63,7 +63,8 @@ HealthPet3D/
   穿了装扮的宠物在 Pets 格子和分享卡上用 App 现拍的图（`Pet/PetSnapper.swift`，见下面 Dress up 一节）。
   网页启动要一点时间，这期间同一位置先显示静态图，宠物画出来后淡掉；iOS 在后台回收了网页进程时会自动重新加载。
 - 改了 `PetWeb/src/` 以后：`cd HealthPet3D/PetWeb && npm install && npm run build`，会重新生成 `Resources/PetWeb/pet.html`。
-  重新渲染静态图和图标：`node tools/stills.js ../Resources/PetWeb/pet.html <输出目录>`（需要 Playwright）。
+  重新渲染静态图：`node tools/stills.js ../Resources/PetWeb/pet.html <输出目录>`（需要 Playwright）。
+  重新渲染 App 图标（浅色 / 深色 / 着色三张，直接写进 AppIcon.appiconset）：`node tools/appicon.mjs`。
 - 表情规则沿用预览：点一下随机害羞 / 吓一跳 / 歪头 / 眨眼，连点 3 下被挠痒，6 下晕乎乎，按住被摸摸；没人碰 45 秒犯困、2 分钟睡着；
   每天第一次打开播「醒来」；吃食物时眼睛跟着碎屑、嚼三下再吞（`Pet.feed`）；吃完所有食物「开心跳」；睡觉时间一到很快睡着；没电（元气低）时偶尔露出「有点累」。
 
