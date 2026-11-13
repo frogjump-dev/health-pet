@@ -27,8 +27,10 @@ struct BookingFeedback: Equatable {
     let target: Target
     /// "Chili +1", "Chili Lv 16"; nil for a late night or Whoop strain.
     let tag: String?
-    /// "giggle" (plain), "cheer" (a level up), "proud" (an on-time night).
+    /// "yum" (plain), "levelup" / "bigcheer" (a level up; Lv 10 and 20 are big), "proud" (an on-time night).
     let expression: String
+    /// 升级 for a new level, 大庆祝 for Lv 10 and 20 (PRD §5.3).
+    static func levelMoment(_ level: Int) -> String { level == 10 || level == 20 ? "bigcheer" : "levelup" }
     /// An on-time night: the moon's check in the status area lights up.
     let lightsCheck: Bool
 }
@@ -156,14 +158,14 @@ extension AppModel {
         case .workout, .steps:
             return BookingFeedback(kind: credit.kind, target: .workouts,
                                    tag: pet.map { levelUp ? "\($0.name) Lv \(after)" : "\($0.name) +1" },
-                                   expression: levelUp ? "cheer" : "giggle", lightsCheck: false)
+                                   expression: levelUp ? BookingFeedback.levelMoment(after) : "yum", lightsCheck: false)
         case .night where pet != nil:
             return BookingFeedback(kind: .night, target: .nights,
                                    tag: pet.map { levelUp ? "\($0.name) Lv \(after)" : "\($0.name) +1" },
-                                   expression: levelUp ? "cheer" : "proud", lightsCheck: true)
+                                   expression: levelUp ? BookingFeedback.levelMoment(after) : "proud", lightsCheck: true)
         case .night, .load:
             // a late night or Whoop strain: eaten all the same, kept in Memories, no tag, never a sad look
-            return BookingFeedback(kind: credit.kind, target: .memories, tag: nil, expression: "giggle", lightsCheck: false)
+            return BookingFeedback(kind: credit.kind, target: .memories, tag: nil, expression: "yum", lightsCheck: false)
         }
     }
 

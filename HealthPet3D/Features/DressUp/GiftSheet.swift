@@ -33,6 +33,8 @@ struct GiftSheet: View {
     let pointsLeft: Int
     let wear: () -> Void
     let later: () -> Void
+    /// The box was tapped open (Dress up: the pet's own little box pops open too, 拆礼物).
+    var onOpen: () -> Void = {}
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var opened = false
@@ -128,6 +130,7 @@ struct GiftSheet: View {
     private func open() {
         guard !opened else { return }
         opens += 1
+        onOpen()
         if reduceMotion {
             opened = true
             withAnimation(.easeOut(duration: 0.3)) { revealed = true }

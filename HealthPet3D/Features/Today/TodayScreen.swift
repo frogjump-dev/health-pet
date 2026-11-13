@@ -128,7 +128,11 @@ struct TodayScreen: View {
             .padding(.top, 2)
             .accessibilityHint("Gives the leave night back")
         } else if model.canTakeLeaveLastNight {
-            Button { model.setLeave(true, nightEnding: Date()) } label: {
+            Button {
+                model.setLeave(true, nightEnding: Date())
+                // 点点头 (PRD §5.3): the pet nods when it is next on screen
+                PetStage.shared.react("nod")
+            } label: {
                 Label("Use leave night", systemImage: "moon.zzz")
                     .scaledFont(14, .bold)
                     .foregroundStyle(Jade.ink)
@@ -327,6 +331,7 @@ private struct SleepFixSheet: View {
                     .frame(maxWidth: .infinity)
                 Button("Save") {
                     model.fixLastNight(moment)
+                    PetStage.shared.react("nod")
                     dismiss()
                 }
                 .buttonStyle(PillButtonStyle(primary: true))

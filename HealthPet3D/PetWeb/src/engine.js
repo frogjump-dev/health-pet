@@ -60,6 +60,11 @@ function breathe(s, t, amt = 1) {
   return s;
 }
 const setOpen = (s, open) => s.eyes.forEach((e) => { if (e.k === 'pill') e.open = Math.min(e.open ?? 1, open); });
+/** Where a point of the pet (viewBox units) is drawn after the body motion of state s (lift, roll, squash; not the 3D turn), for effects that ride on its head. */
+function onBody(s, c, x, y) {
+  const a = s.roll * D2R, dx = (x - c.cx) * s.sx, dy = (y - c.bottom) * s.sy;
+  return [c.cx + dx * Math.cos(a) - dy * Math.sin(a), c.bottom + dx * Math.sin(a) + dy * Math.cos(a) + s.lift];
+}
 
 // ------------------------------------------------------------------------------------
 // The expressions. c = anchors of the pet (viewBox units): cx, top, bottom, left, right, ey.
@@ -529,8 +534,332 @@ const EXPRS = [
       setOpen(s, 1 - blink(t, 3.55, 0.2));
       return s;
     } },
+
+  // ---------- 新表情 · 第一批 (2026-11-12): same vocabulary as the 26 above, each tied to a scene that had no expression of its own ----------
+  { id: 'beg', zh: '眼巴巴', group: 'new', prio: 0.5, dur: 4.0, key: 1.08, loop: true, use: '主页有没点的食物气泡时，十几秒一次：整个身子转向最近的气泡，踮脚够三下（那边一闪一闪），咽一下口水，再回头看你（这里有东西等你点）',
+    // Not a head tilt (that is 歪头好奇): the body turns to the bubble and stays upright, reaching up on its toes.
+    f(t, c) {
+      const s = breathe(base(), t);
+      const aim = c.aim || { x: 0.72, y: -0.55 }; // the nearest bubble (-1..1 from the eyes); the gallery uses up-right
+      const ax = clamp(aim.x, -1, 1), ay = clamp(aim.y, -1, 1);
+      const glance = env(t, 2.42, 2.62, 2.95, 3.2);                // "can I?": looks back at you for a moment
+      const look = env(t, 0.2, 0.48, 3.4, 3.8) * (1 - 0.85 * glance);
+      const pulse = (t0) => { const u = (t - t0) / 0.4; return u > 0 && u < 1 ? Math.sin(Math.PI * u) ** 2 : 0; };
+      const reach = pulse(0.6) + pulse(1.02) + pulse(1.44);          // up on its toes, three times
+      const gulp = env(t, 2.0, 2.08, 2.12, 2.3);                     // swallows
+      s.yaw = 22 * ax * look; s.pitch = -6 * ay * look - 3 * ay * reach + 2 * glance;
+      s.gx = 0.95 * ax * look; s.gy = 0.85 * ay * look;
+      s.roll = 1.2 * ax * reach;
+      s.sy *= 1 + 0.06 * reach - 0.045 * gulp; s.sx *= 1 - 0.035 * reach + 0.03 * gulp;
+      s.lift = -2.8 * reach;
+      s.eyes = both(pill({ sx: 1 + 0.1 * look + 0.08 * glance, sy: 1 + 0.04 * look + 0.06 * glance, hl: glance > 0.02 ? 1 : 0, hlS: glance }));
+      setOpen(s, 1 - blink(t, 0.08, 0.16) - Math.sin(Math.PI * clamp((t - 2.02) / 0.26, 0, 1)) - blink(t, 3.55, 0.2));
+      // over there, where it is looking, something glints each time it reaches
+      const dl = Math.hypot(ax, ay) || 1, gx = c.cx + (ax / dl) * (c.w * 0.5 + 20), gy = c.ey + (ay / dl) * (c.h * 0.5 + 16);
+      [0.6, 1.02, 1.44].forEach((t0, n) => {
+        const u = clamp((t - t0 - 0.05) / 0.45, 0, 1), f = Math.sin(Math.PI * u);
+        if (f > 0.01) s.fx.push({ k: 'sparkle', x: gx + [0, -2.4, 2][n], y: gy + [0, 2.2, -1.6][n], s: (1.55 - 0.2 * n) * f, a: f, c: PAL.gold, rot: 20 * u });
+      });
+      return s;
+    } },
+  { id: 'yum', zh: '好吃', group: 'new', prio: 2, dur: 2.8, key: 1.05, loop: true, use: '吃完一个食物气泡、咽下去之后：眯眼，慢慢左右晃两下，脸红（吃到了，记上了）',
+    f(t, c) {
+      const s = breathe(base(), t, 0.5);
+      const k = env(t, 0.12, 0.38, 2.25, 2.7);
+      const gulp = env(t, 0.0, 0.08, 0.1, 0.32);
+      s.sy *= 1 - 0.04 * gulp; s.sx *= 1 + 0.025 * gulp;
+      const sway = Math.sin((2 * Math.PI * (t - 0.36)) / 1.0) * env(t, 0.3, 0.55, 2.05, 2.45);
+      s.roll = 6 * sway; s.yaw = 7 * sway;
+      s.pitch = 3.5 * k;                                          // savouring it, chin up a little
+      s.lift = -1.1 * sway * sway;
+      if (k > 0.3) s.eyes = both({ k: 'happy', peak: 1.12 });
+      s.blush = 0.75 * k;
+      [[-1, 0.5], [1, 1.0]].forEach(([side, t0]) => {
+        const u = clamp((t - t0) / 0.6, 0, 1), f = Math.sin(Math.PI * u);
+        if (f > 0.01) s.fx.push({ k: 'sparkle', x: c.cx + side * c.w * 0.56, y: c.top + c.h * 0.26 - 3 * u, s: 1.2 * f, a: f, c: PAL.gold, rot: 20 * u });
+      });
+      return s;
+    } },
+  { id: 'levelup', zh: '升级', group: 'new', prio: 3, dur: 3.2, key: 1.02, loop: true, use: '某只宠物升级的那一刻：压低蓄力，向上一拔，头顶弹出「Lv」和一个向上的小箭头，眼睛亮一下（它长大了一级）',
+    f(t, c) {
+      const s = breathe(base(), t, 0.4);
+      const crouch = env(t, 0.05, 0.4, 0.42, 0.52), up = env(t, 0.46, 0.58, 0.7, 0.98);
+      s.sy *= 1 - 0.1 * crouch + 0.09 * up + ring(t, 0.98, -0.07, 0.32, 4);
+      s.sx *= 1 + 0.07 * crouch - 0.05 * up + ring(t, 0.98, 0.05, 0.32, 4);
+      s.lift = hop(t, 0.5, 0.98, 4.5);
+      const gaze = env(t, 0.95, 1.25, 2.3, 2.8);                  // looks up at its new arrow
+      s.pitch = -2 * crouch + 4 * up + 4 * gaze; s.gy = -0.5 * gaze;
+      const det = env(t, 0.05, 0.25, 0.44, 0.56), br = env(t, 0.85, 1.05, 1.9, 2.35);
+      s.eyes = both(pill({ slant: 0.55 * det, lid: 0.22 * det, sx: 1 + 0.12 * br, sy: 1 + 0.08 * br, hl: br > 0.02 ? 'star' : 0, hlS: br }));
+      s.blush = 0.35 * br;
+      setOpen(s, 1 - blink(t, 2.75, 0.2));
+      const crown = c.crown ?? c.top;
+      const a = env(t, 0.55, 0.62, 2.3, 2.7);
+      if (a > 0.01) {
+        const rise = sm((t - 0.55) / 0.55);
+        const y = crown - 4 - 12 * rise + 0.6 * osc(t, 1.3) * win(t, 1.1, 1.4);
+        s.fx.push({ k: 'lv', x: c.cx - 8.2, y: y + 0.9, s: 1.85 * popIn(t, 0.6, 0.9), a, yaw: 12 * Math.sin(1.6 * (t - 0.6)), c: PAL.accent });
+        s.fx.push({ k: 'arrow', x: c.cx + 6.4, y, s: 2.0 * popIn(t, 0.55, 0.85), a, yaw: 30 * Math.sin(1.6 * (t - 0.55)), c: PAL.accent });
+      }
+      [[-1, 1.0], [1, 1.12]].forEach(([side, t0]) => {
+        const u = clamp((t - t0) / 0.7, 0, 1), f = Math.sin(Math.PI * u);
+        if (f > 0.01) s.fx.push({ k: 'sparkle', x: c.cx + side * 16, y: crown - 17 + side * 1.5, s: 1.0 * f, a: f, c: PAL.gold, rot: 25 * u });
+      });
+      return s;
+    } },
+  { id: 'bigcheer', zh: '大庆祝', group: 'new', prio: 3, dur: 4.8, key: 2.75, loop: true, use: '月度成就、累计自律周到整数、Lv 10 / 20：连跳两下（第二下更高），彩纸落下，接住一枚小奖杯捧在身侧（这是大事）',
+    f(t, c) {
+      const s = breathe(base(), t, 0.4);
+      const c1 = env(t, 0.02, 0.22, 0.22, 0.3), c2 = env(t, 0.72, 0.86, 0.9, 1.0);
+      s.sy *= 1 - 0.08 * c1 - 0.11 * c2 + ring(t, 1.72, -0.09, 0.32, 4) + ring(t, 2.08, -0.04, 0.3, 5);
+      s.sx *= 1 + 0.06 * c1 + 0.08 * c2 + ring(t, 1.72, 0.07, 0.32, 4) + ring(t, 2.08, 0.03, 0.3, 5);
+      s.lift = hop(t, 0.28, 0.72, 6) + hop(t, 0.98, 1.72, 14);
+      const up = env(t, 1.72, 1.85, 2.0, 2.2);                     // watches the trophy coming down
+      const proud = env(t, 2.25, 2.55, 3.85, 4.3), sway = Math.sin((2 * Math.PI * (t - 2.4)) / 1.1) * env(t, 2.35, 2.6, 3.7, 4.1);
+      s.gy = -0.7 * up + 0.25 * proud; s.gx = -0.45 * up - 0.35 * proud; s.pitch = 6 * up + 5 * proud;   // watches it come down on its left, then glances at it
+      s.roll = 5 * sway - 2.5 * proud; s.yaw = 5 * sway - 4 * proud;
+      if (t > 0.25 && t < 1.74) s.eyes = both({ k: 'happy' });
+      else if (t >= 1.74 && t < 2.2) s.eyes = both(pill({ sx: 1.12, sy: 1.08, hl: 1, hlS: 1 }));
+      else if (t >= 2.2 && t < 4.25) s.eyes = both({ k: 'happy', peak: 0.8 });
+      s.blush = 0.5 * env(t, 2.2, 2.5, 3.9, 4.35);
+      // confetti drifts down over the stage from the top of the second hop
+      for (let i = 0; i < 22; i++) {
+        const t0 = 1.25 + 0.5 * noise(i * 3 + 1), u = t - t0;
+        if (u <= 0) continue;
+        const back = i % 3 === 2, v = 24 + 12 * noise(i * 5 + 2);
+        const x = c.cx + (noise(i * 7 + 3) - 0.5) * 1.9 * c.w + Math.sin(2 * Math.PI * (0.7 + 0.5 * noise(i * 11)) * u + i) * 3;
+        const y = c.top - 48 - 14 * noise(i * 13 + 4) + v * u;
+        const a = win(u, 0, 0.12) * (1 - win(t, 4.2, 4.65)) * (1 - win(y, c.bottom - 6, c.bottom + 4));
+        if (a > 0.01) s.fx.push({ k: 'conf', back, x, y, s: ((i % 3 === 1 ? 0.85 : 1.0) + 0.3 * noise(i * 17)) * (back ? 0.85 : 1), rot: (noise(i * 19) - 0.5) * 360 + u * (noise(i * 23) - 0.5) * 300, flip: u * (300 + 360 * noise(i * 29)) + i * 40, a, c: PAL.conf[i % PAL.conf.length], shape: i % 3 === 1 ? 1 : 0 });
+      }
+      // the trophy drops in from the upper left and lands against its left side, where it stays, held, while it sways
+      const [lx, ly] = c.holdL ?? [c.left + 2, c.bottom - 0.42 * c.h], T0 = 1.45, T1 = 2.08;
+      const ta = win(t, T0, T0 + 0.08) * (1 - win(t, 4.15, 4.45));
+      if (ta > 0.01) {
+        const [hx, hy] = onBody(s, c, lx + 1.6, ly + 9);         // its base, just inside the body's left edge
+        const fall = clamp((t - T0) / (T1 - T0), 0, 1), away = win(t, 4.1, 4.45);
+        const bounce = ring(t, T1, -1.2, 0.3, 6);
+        const x = t < T1 ? lerp(hx - 7, hx, sm(fall)) : hx, y = t < T1 ? lerp(c.top - 46, hy, fall * fall) : hy + bounce - 3 * away;
+        s.fx.push({ k: 'trophy', x, y, rot: t < T1 ? -14 * (1 - fall) : s.roll - 6, s: 2.45 * (1 - 0.35 * away), a: ta, yaw: t < T1 ? 50 * (1 - fall) * Math.sin(5 * t) : 0.6 * s.yaw });
+        if (t > T1 && t < T1 + 0.7) {
+          const f = Math.sin(Math.PI * (t - T1) / 0.7);
+          s.fx.push({ k: 'sparkle', x: hx - 10, y: hy - 17, s: 1.0 * f, a: f, c: PAL.gold }, { k: 'sparkle', x: hx + 6, y: hy - 22, s: 0.8 * f, a: f, c: PAL.gold });
+        }
+      }
+      setOpen(s, 1 - blink(t, 4.5, 0.2));
+      return s;
+    } },
+  { id: 'hello', zh: '打招呼', group: 'new', prio: 2, dur: 3.0, key: 1.0, loop: true, use: '首次打开的第一页 / 当天隔了几小时再回来 / 在 Pets 里点开一只：朝你探身，左右晃两下，眼睛弯起来（你来啦）',
+    f(t) {
+      const s = breathe(base(), t, 0.5);
+      const k = env(t, 0.1, 0.45, 2.3, 2.85);
+      s.pitch = -4.5 * k;                                         // leans in toward you
+      s.sx *= 1 + 0.03 * k; s.sy *= 1 + 0.03 * k;
+      const sway = Math.sin((2 * Math.PI * (t - 0.6)) / 0.8) * env(t, 0.55, 0.75, 1.95, 2.3);
+      s.roll = 7 * sway; s.yaw = 5 * sway;
+      s.lift = hop(t, 0.06, 0.36, 1.6) - 0.9 * sway * sway;
+      const notice = env(t, 0.04, 0.14, 0.3, 0.42);
+      if (t > 0.42 && t < 2.4) s.eyes = both({ k: 'happy' });
+      else s.eyes = both(pill({ sx: 1 + 0.08 * notice, sy: 1 + 0.06 * notice }));
+      s.blush = 0.45 * k;
+      setOpen(s, 1 - blink(t, 2.7, 0.2));
+      return s;
+    } },
+  { id: 'please', zh: '拜托', group: 'new', prio: 2, dur: 3.6, key: 1.45, loop: true, use: '宠物开口要通知权限的那一次 / 首次打开的健康授权页：眼睛变大，微微仰头，小幅左右晃（可以吗？）',
+    f(t) {
+      const s = breathe(base(), t, 0.7);
+      const k = env(t, 0.15, 0.6, 2.9, 3.4);
+      s.pitch = 4.5 * k; s.gy = -0.45 * k;                        // looks up at you
+      s.sy *= 1 - 0.025 * k; s.sx *= 1 + 0.015 * k;               // makes itself a little smaller
+      const sway = Math.sin((2 * Math.PI * (t - 0.6)) / 1.3) * env(t, 0.5, 0.8, 2.6, 3.1);
+      s.roll = 3 * sway + 3.5 * k; s.yaw = 4 * sway;              // a hopeful tilt, swaying a little
+      s.eyes = both(pill({ sx: 1 + 0.26 * k, sy: 1 + 0.16 * k, hl: k > 0.02 ? 1 : 0, hlS: 1.35 * k }));
+      s.blush = 0.4 * k;
+      setOpen(s, 1 - blink(t, 1.95, 0.22));
+      return s;
+    } },
+  // 等一下 loops its search (holdSeg) for as long as the app is waiting; released, it finds the data and nods
+  { id: 'wait', zh: '等一下', group: 'new', prio: 2, dur: 4.6, key: 1.25, loop: true, holdSeg: [1.6, 2.8], use: '首次打开读取最近 30 天数据 / 回到 App 等手表同步：左右张望像在翻找，头顶三颗小珠一颗颗跳；数据到了眼睛一亮、点一下头',
+    f(t, c) {
+      const A = 0.4, B = 2.8, P = 1.2;                              // search from A to B: two whole periods, so it can loop
+      const k = env(t, A - 0.35, A, B, B + 0.35);
+      const s = breathe(base(), t, 1 - k);
+      const ph = (2 * Math.PI * (t - A)) / P;
+      s.yaw = 15 * Math.sin(ph) * k; s.gx = 0.75 * Math.sin(ph + 0.35) * k;
+      s.roll = -2 * Math.sin(ph) * k;
+      s.pitch = (-2.5 - 1.5 * Math.cos(2 * ph)) * k;
+      s.lift = -0.35 * (1 - Math.cos(2 * ph)) * k;
+      const crown = c.crown ?? c.top;
+      [0, 1, 2].forEach((i) => {
+        const a = win(t, 0.12 + i * 0.08, 0.3 + i * 0.08) * (1 - win(t, B + 0.06, B + 0.24));
+        if (a < 0.01) return;
+        const bump = Math.max(0, Math.sin(ph - i * 1.05)) ** 2;
+        s.fx.push({ k: 'dot', x: c.cx + (i - 1) * 4.6, y: crown - 7 - 2.4 * bump * k + 0.5 * s.lift, s: 1.45 * popIn(t, 0.12 + i * 0.08, 0.42 + i * 0.08) * (1 - 0.6 * win(t, B + 0.04, B + 0.24)), a });
+      });
+      // found it: eyes light up, a little "oh!", one nod
+      const br = env(t, B, B + 0.15, 3.9, 4.3), nod = env(t, 3.0, 3.15, 3.2, 3.45);
+      s.lift += hop(t, B, B + 0.22, 1.2);
+      s.pitch += -7 * nod; s.gy = 0.2 * nod;
+      s.eyes = both(pill({ sy: 1 - 0.04 * k + 0.08 * br, sx: 1 + 0.12 * br, lid: 0.08 * k, hl: br > 0.02 ? 'star' : 0, hlS: br }));
+      s.blush = 0.3 * br;
+      const g = clamp((t - B - 0.05) / 0.6, 0, 1), f = Math.sin(Math.PI * g);
+      if (f > 0.01) s.fx.push({ k: 'sparkle', x: c.cx + 7, y: crown - 9, s: 1.1 * f, a: f, c: PAL.gold, rot: 20 * g });
+      setOpen(s, 1 - blink(t, 0.15, 0.18) - blink(t, 4.35, 0.2));
+      return s;
+    } },
+  { id: 'holiday', zh: '放假', group: 'new', prio: 1, dur: 5.2, key: 2.4, loop: true, use: '请假日当天的待机（以后 Whoop 红色日的休息奖励）：往后一靠，摊扁一点，眯眼慢慢晃（今天休息是算数的）',
+    f(t) {
+      const s = breathe(base(), t, 1.2);
+      const sigh = env(t, 1.7, 2.3, 2.4, 3.4);                    // a contented sigh once a loop
+      s.sy *= 0.955 + 0.03 * sigh; s.sx *= 1.03 - 0.015 * sigh;    // sinks into its day off
+      s.pitch = 5 + 2 * sigh; s.gy = -0.15;                        // leaning back
+      s.roll = -2.5 + 3.5 * osc(t, 5.2); s.yaw = 4 * osc(t, 5.2, 0.7); // lounging to one side, rocking slowly
+      s.eyes = both({ k: 'happy', peak: 0.45 + 0.3 * sigh, s: 0.95 });
+      s.blush = 0.25 + 0.15 * sigh;
+      return s;
+    } },
+  // ---------------- 第二批 (2026-11-12 晚): 呼呼、想你了、点点头、拍照、看月亮、拆礼物、照一照 (动一动 dropped by the user, round 2) ----------------
+  { id: 'puff', zh: '呼呼', group: 'new2', prio: 0.5, dur: 3.6, key: 0.9, loop: true, use: '当天有运动入账之后，待机里偶尔出现：小口喘气，脸红，头顶冒出两颗小汗珠，最后满足地眯眼（今天动过了，痛快）',
+    f(t, c) {
+      const s = breathe(base(), t, 0.4);
+      const k = env(t, 0.1, 0.35, 2.15, 2.5);
+      const pant = Math.sin((2 * Math.PI * t) / 0.36);
+      s.sy *= 1 + 0.04 * pant * k; s.sx *= 1 - 0.022 * pant * k;
+      s.pitch = 2.5 * k - 1 * env(t, 2.4, 2.7, 3.0, 3.4); s.gy = -0.15 * k;
+      s.roll = 1.2 * Math.sin((2 * Math.PI * t) / 1.8) * k;
+      const sat = env(t, 2.3, 2.55, 3.1, 3.45);                   // a satisfied squint at the end
+      s.sy *= 1 - 0.02 * sat; s.sx *= 1 + 0.012 * sat;
+      if (sat > 0.3) s.eyes = both({ k: 'happy', peak: 0.75 });
+      else s.eyes = both(pill({ lid: 0.18 * k, slant: -0.25 * k, sy: 1 - 0.04 * k }));
+      s.blush = 0.75 * k + 0.5 * sat;
+      const crown = c.crown ?? c.top;
+      [[1, 0.35], [-1, 0.95]].forEach(([side, t0]) => {            // two little beads of sweat flick off the head
+        const u = clamp((t - t0) / 0.75, 0, 1), f = env(u, 0, 0.12, 0.65, 1);
+        if (u > 0 && u < 1) s.fx.push({ k: 'drop', x: c.cx + side * (c.w * 0.3 + 9 * u), y: crown - 1 - 7 * u + 12 * u * u, s: 2.1, a: f, rot: side * 30 * u });
+      });
+      return s;
+    } },
+  // 想你了 (round 2, user): no coming up to the glass, no growing. It stays where it is: freezes, recognises you
+  // (eyes fill with shine, a little tremble), one happy hop, then rubs its cheek side to side as if against your hand.
+  { id: 'missyou', zh: '想你了', group: 'new2', prio: 3, dur: 4.8, key: 1.3, loop: true, use: '隔了 3 天以上才回来的第一次打开：先愣住，认出你来眼睛一下子亮了、激动得微微发抖，开心地跳一下，再左右蹭蹭，冒出一颗小爱心（好久不见；只说想念，不提进度）',
+    f(t, c) {
+      const freeze = env(t, 0.1, 0.25, 0.7, 0.9);                    // "...is that you?"
+      const s = breathe(base(), t, 1 - freeze);
+      const shine = env(t, 0.7, 1.0, 1.55, 1.7);                     // it is you: eyes fill with light
+      const tremble = Math.sin((2 * Math.PI * t) / 0.16) * env(t, 0.85, 1.0, 1.4, 1.55);
+      s.roll = 1.1 * tremble; s.pitch = 2 * freeze + 3 * shine; s.gy = -0.25 * shine;
+      s.sy *= 1 - 0.03 * env(t, 1.45, 1.55, 1.58, 1.68) + 0.02 * shine; s.sx *= 1 + 0.02 * env(t, 1.45, 1.55, 1.58, 1.68);
+      s.lift = hop(t, 1.62, 2.05, 2.6);                              // one happy hop
+      s.sy *= 1 - 0.05 * env(t, 2.02, 2.08, 2.1, 2.25); s.sx *= 1 + 0.035 * env(t, 2.02, 2.08, 2.1, 2.25);
+      const rub = Math.sin((2 * Math.PI * (t - 2.2)) / 0.95) * env(t, 2.15, 2.4, 3.8, 4.1);   // cheek against your hand, twice
+      s.roll += 7 * rub; s.yaw = 6 * rub; s.lift -= 0.7 * rub * rub;
+      const fond = env(t, 1.65, 1.8, 4.0, 4.2);
+      if (fond > 0.3) s.eyes = both({ k: 'happy', peak: 1.1 });
+      else s.eyes = both(pill({ sx: 1 + 0.08 * freeze + 0.14 * shine, sy: 1 + 0.05 * freeze + 0.1 * shine, hl: shine > 0.02 ? 'star' : 0, hlS: 1.2 * shine }));
+      setOpen(s, 1 - blink(t, 0.45, 0.14) - blink(t, 4.45, 0.2));
+      s.blush = 0.55 * shine + 0.8 * fond;
+      const u = clamp((t - 2.3) / 1.5, 0, 1);                        // one small heart drifts up beside its head
+      if (u > 0 && u < 1) s.fx.push({ k: 'heart', x: c.cx + c.w * 0.4 + 2.5 * Math.sin(u * 5), y: c.top + 3 - 14 * u, s: 1.9 * popIn(u, 0, 0.16), yaw: 25 * Math.sin(u * 5), a: env(u, 0, 0.08, 0.7, 1) });
+      return s;
+    } },
+  { id: 'nod', zh: '点点头', group: 'new2', prio: 2, dur: 1.9, key: 0.9, loop: true, use: '做完一个设置：设好入睡时间、请假、更正手表记错的数据、设为主宠：快速点两下头，眼睛弯一下（收到，记下了）',
+    f(t) {
+      const s = breathe(base(), t, 0.5);
+      const n = env(t, 0.12, 0.24, 0.27, 0.42) + env(t, 0.47, 0.59, 0.62, 0.8);
+      s.pitch = -8 * n; s.gy = 0.3 * n;
+      s.lift = 0.5 * n; s.sy *= 1 - 0.02 * n;
+      const ok = env(t, 0.78, 0.9, 1.3, 1.45);
+      if (ok > 0.3) s.eyes = both({ k: 'happy' });
+      s.blush = 0.3 * ok;
+      return s;
+    } },
+  { id: 'photo', zh: '拍照', group: 'new2', prio: 2, dur: 3.6, key: 1.75, loop: true, use: '打开分享卡预览 / 按下保存或分享：站直定住，闪一下光，一个相片框慢慢浮出来把它框住，它在框里朝你眨一只眼，相片框再慢慢淡掉（拍好了）',
+    f(t, c) {
+      const pose = env(t, 0.1, 0.4, 2.9, 3.3);
+      const s = breathe(base(), t, 1 - pose);
+      s.sy *= 1 + 0.035 * pose; s.sx *= 1 - 0.02 * pose;           // stands up straight and holds still
+      s.lift = -0.6 * pose; s.pitch = 1.2 * pose;
+      const fl = clamp((t - 0.95) / 0.45, 0, 1);
+      if (fl > 0 && fl < 1) s.fx.push({ k: 'flash', x: c.cx, y: c.top + c.h * 0.45, r: c.w * 0.55, a: (1 - fl) ** 2 });
+      // round 2 (user): after the flash, a photo frame fades in around it, holds, and fades out
+      const fin = win(t, 1.05, 1.5), fout = win(t, 2.7, 3.15), fa = fin * (1 - fout);
+      if (fa > 0.01) s.fx.push({ k: 'frame', back: true, x0: c.left - 9, x1: c.right + 9, y0: c.top - 11, y1: c.bottom + 14, a: fa, s: 1 + 0.06 * (1 - fin) + 0.03 * fout, rot: -2.5 - 2.5 * (1 - fin) });
+      const wk = env(t, 1.45, 1.65, 2.55, 2.85);
+      s.roll = 5 * wk; s.yaw = 7 * wk; s.gx = 0.2 * wk;
+      s.lift += hop(t, 1.4, 1.7, 0.9);
+      s.eyes = [pill({ sx: 1 + 0.05 * pose }), wk > 0.35 ? { k: 'happy', s: 1.05 } : pill({ sx: 1 + 0.05 * pose })];
+      setOpen(s, 1 - blink(t, 0.96, 0.16));                         // the flash makes it blink
+      s.blush = 0.45 * wk;
+      const g = env(t, 1.65, 1.8, 2.2, 2.5);
+      if (g > 0.01) s.fx.push({ k: 'sparkle', x: c.right + 1, y: c.top + c.h * 0.26, s: 0.8 + 0.6 * g, a: g, c: PAL.gold });
+      return s;
+    } },
+  { id: 'moon', zh: '看月亮', group: 'new2', prio: 1, dur: 6.0, key: 3.0, loop: true, use: '目标入睡时间前一小时的待机：仰头看斜上方一枚小月亮，慢慢眨眼（快到睡觉的时间了；和月亮气泡是同一个符号，不催）',
+    f(t, c) {
+      const s = breathe(base(), t, 1.15);
+      const drift = Math.sin((2 * Math.PI * t) / 6.0);
+      s.pitch = 5; s.gx = -0.55 + 0.05 * drift; s.gy = -0.62;
+      s.yaw = -8 + 1.5 * drift; s.roll = -2 + 1.2 * drift;
+      s.eyes = both(pill({ lid: 0.16, hl: 1, hlS: 0.55 }));
+      setOpen(s, 1 - blink(t, 1.6, 0.7) - blink(t, 4.4, 0.7));      // slow, unhurried blinks
+      s.blush = 0.18;
+      const mx = c.left - 4, my = c.top - 9 + 0.9 * Math.sin((2 * Math.PI * t) / 3.0);
+      s.fx.push({ k: 'moon', x: mx, y: my, s: 2.5, a: 1, yaw: 10 * drift });
+      [[-10, 7, 0], [9, -8, 0.5]].forEach(([dx, dy, ph]) => {
+        const f = 0.5 + 0.5 * Math.sin((2 * Math.PI * t) / 3.0 + ph * Math.PI * 2);
+        s.fx.push({ k: 'sparkle', x: mx + dx, y: my + dy, s: 0.6 + 0.45 * f, a: 0.45 + 0.5 * f, c: MOONC });
+      });
+      return s;
+    } },
+  // 拆礼物 loops its suspense (holdSeg) until the draw result arrives; released, the box pops open
+  { id: 'gift', zh: '拆礼物', group: 'new2', prio: 2.5, dur: 4.8, key: 3.4, loop: true, holdSeg: [1.2, 2.8], use: 'Dress up 里按下 Draw 到揭晓之间：小礼盒落在身边，凑近盯着它左右晃，盒子弹开时吓一小跳，接着星星眼（抽奖的悬念和「得到了」）',
+    f(t, c) {
+      const s = breathe(base(), t, 0.6);
+      const O = 2.85;                                               // the box opens
+      const fall = clamp(t / 0.6, 0, 1), land = c.bottom - 0.5;
+      const bx = c.right + 9, by = fall < 1 ? lerp(c.top - 34, land, fall * fall) : land;
+      const look = env(t, 0.55, 0.85, 3.9, 4.4);
+      s.yaw = 13 * look; s.gx = 0.7 * look; s.gy = 0.45 * look; s.pitch = -3 * look;
+      const sw = Math.sin((2 * Math.PI * (t - 1.2)) / 0.8) * env(t, 0.9, 1.2, 2.8, 2.95);
+      s.roll = 3 * look + 3.5 * sw; s.lift = -0.5 * sw * sw;
+      s.lift += hop(t, 0.6, 0.85, 1.0) + hop(t, O, O + 0.38, 3.6);
+      const startle = env(t, O, O + 0.06, O + 0.15, O + 0.3);
+      s.sy *= 1 + 0.05 * startle; s.sx *= 1 - 0.03 * startle;
+      const wow = env(t, O + 0.25, O + 0.4, 4.2, 4.55);
+      if (wow > 0.3) s.eyes = both({ k: 'gem', shine: Math.sin(5 * t) });
+      else s.eyes = both(pill({ sx: 1 + 0.14 * look + 0.2 * startle, sy: 1 + 0.08 * look + 0.14 * startle, hl: look > 0.02 ? 1 : 0, hlS: look }));
+      s.blush = 0.25 * look + 0.45 * wow;
+      const open = win(t, O, O + 0.5), a = 1 - win(t, 4.2, 4.6);
+      if (a > 0.01) s.fx.push({ k: 'gift', x: bx, y: by + 1.2 * env(t, 0.58, 0.62, 0.62, 0.8), s: 2.8, a, open, rot: 4 * Math.sin((2 * Math.PI * (t - 1.2)) / 0.4) * env(t, 1.0, 1.2, 2.8, 2.9) });
+      [[-8, -20, 0], [3, -26, 0.08], [11, -17, 0.16]].forEach(([dx, dy, d]) => {
+        const g = clamp((t - O - 0.05 - d) / 0.7, 0, 1), f = Math.sin(Math.PI * g);
+        if (f > 0.01) s.fx.push({ k: 'sparkle', x: bx + dx * (0.6 + 0.4 * g), y: by + dy * (0.6 + 0.4 * g), s: 1.25 * f, a: f, c: PAL.gold, rot: 20 * g });
+      });
+      return s;
+    } },
+  { id: 'mirror', zh: '照一照', group: 'new2', prio: 2, dur: 4.4, key: 0.9, loop: true, use: '试穿或换上一件装饰之后：往左转亮个相，再往右转亮个相，把装饰转给你看一圈（好看吗）',
+    f(t, c) {
+      const s = breathe(base(), t, 0.6);
+      const L = env(t, 0.2, 0.55, 1.35, 1.7), R = env(t, 1.75, 2.1, 2.9, 3.25);
+      s.yaw = -18 * L + 18 * R; s.roll = -3 * L + 3 * R;
+      s.gx = 0.35 * L - 0.35 * R;                                  // turned away, still looking back at you
+      s.pitch = 1.5 * (L + R);
+      s.lift = hop(t, 0.5, 0.78, 1.3) + hop(t, 2.05, 2.33, 1.3);
+      s.sy *= 1 + 0.02 * (L + R);
+      const end = env(t, 3.25, 3.4, 3.85, 4.1);
+      if (end > 0.3) s.eyes = both({ k: 'happy' });
+      else s.eyes = both(pill({ sx: 1 + 0.06 * (L + R), hl: L + R > 0.02 ? 1 : 0, hlS: L + R }));
+      s.blush = 0.35 + 0.25 * end;
+      [[-1, 0.62], [1, 2.17]].forEach(([side, t0]) => {
+        const g = clamp((t - t0) / 0.55, 0, 1), f = Math.sin(Math.PI * g);
+        if (f > 0.01) s.fx.push({ k: 'sparkle', x: c.cx + side * (c.w * 0.5 + 3), y: c.top + c.h * 0.22, s: 1.05 * f, a: f, c: PAL.gold, rot: 20 * g });
+      });
+      return s;
+    } },
 ];
 const GROUPS = [
+  { id: 'new2', zh: '第二批', en: 'New · batch 2', note: '11-12 晚定稿' },
+  { id: 'new', zh: '第一批', en: 'New · batch 1', note: '11-12 定稿' },
   { id: 'idle', zh: '待机', en: 'Idle', note: '首页没人碰时随机轮播' },
   { id: 'touch', zh: '互动', en: 'Touch', note: '点、长按、连点的反应' },
   { id: 'cheer', zh: '庆祝', en: 'Celebrate', note: '打卡和成就' },
@@ -726,10 +1055,20 @@ const NOTE1_D = [ellipseD(-1.2, 2.55, 1.5, 1.08, -22), 'M0.02 2.3V-3.75H0.78V2.3
 const NOTE2_D = [ellipseD(-2.25, 2.75, 1.38, 1.0, -22), ellipseD(1.95, 2.05, 1.38, 1.0, -22), 'M-1.17 2.55V-2.9H-0.47V2.55Z', 'M3.03 1.85V-3.6H3.73V1.85Z', 'M-1.17-1.75L3.73-2.45V-3.65L-1.17-2.95Z'];
 const Z_D = 'M-1.85-2.05H1.85V-1.05L-0.55 1.05H1.85V2.05H-1.85V1.05L0.55-1.05H-1.85Z';
 const DROP_D = 'M0-2.6C0.9-1.15 1.6-0.25 1.6 0.8C1.6 1.75 0.9 2.4 0 2.4C-0.9 2.4-1.6 1.75-1.6 0.8C-1.6-0.25-0.9-1.15 0-2.6Z';
+const ARROW_D = 'M0-3.3L3-0.2H1.3V3H-1.3V-0.2H-3Z';
+const TROPHY_CUP = ['M-2.7-7.4H2.7V-5.5C2.7-3.6 1.55-2.55 0-2.55C-1.55-2.55-2.7-3.6-2.7-5.5Z', 'M-0.6-2.8H0.6V-1.2H-0.6Z', 'M-2.1-1.35H2.1V0H-2.1Z'];
+const TROPHY_HANDLES = ['M-2.6-6.6C-4.3-6.6-4.3-4-2.3-3.9', 'M2.6-6.6C4.3-6.6 4.3-4 2.3-3.9'];
 const SPARK_D = 'M0-3.8Q0.58-0.58 3.1 0Q0.58 0.58 0 3.8Q-0.58 0.58-3.1 0Q-0.58-0.58 0-3.8Z';
 const CLOUD_L = [[-6.2, 1.2, 4.2], [-2.6, -2.2, 4.8], [2.4, -2.4, 4.6], [6.2, 0.6, 4.1], [3.2, 3.4, 3.9], [-2.4, 3.6, 4.0]];
 const PUFF_D = [[-2.0, 0.55, 1.35], [-0.55, -0.45, 1.85], [1.25, -0.1, 1.55], [2.45, 0.7, 1.15]].map(([x, y, r]) => circleD(x, y, r))
   .concat(['M-2.45 0.5H2.75A0.75 0.75 0 0 1 2.75 2H-2.45A0.75 0.75 0 0 1 -2.45 0.5Z']);
+
+// 第二批 (2026-11-12): small props, same extruded-token style
+const CORAL = '#F08A72', MOONC = '#CDC468';
+const MOON_D = 'M0.6-3.35A3.4 3.4 0 1 0 0.6 3.35A4.2 4.2 0 0 1 0.6-3.35Z';
+const GIFT_BOX = 'M-3-3.6H3V0H-3Z', GIFT_RIB = 'M-0.55-3.6H0.55V0H-0.55Z';
+const GIFT_LID = 'M-3.5-4.9H3.5V-3.5H-3.5Z', GIFT_LIDRIB = 'M-0.6-4.9H0.6V-3.5H-0.6Z';
+const GIFT_BOW = ['M0-4.9C-1.7-6.6-2.8-5.2-0.7-4.9Z', 'M0-4.9C1.7-6.6 2.8-5.2 0.7-4.9Z'];
 
 function fxMarkup(fx) {
   const a = r2(clamp(fx.a ?? 1, 0, 1));
@@ -779,6 +1118,16 @@ function fxMarkup(fx) {
         + (rr > 0.02 ? `<path d="${rays}" stroke="${PAL.sun}" stroke-width="1.15" stroke-linecap="round" opacity="${r2(rr)}"/>` : '')
         + tok(circleD(0, 0, 2.6), PAL.sun, { dep: 0.45, hl: HL(-0.85, -0.9, 0.75, 0.4, -35, 0.7) }));
     }
+    case 'arrow': // 升级: one chunky up arrow
+      return g(tok(ARROW_D, fx.c ?? PAL.accent, { dep: 0.6, yaw: fx.yaw, round: 1.0, hl: HL(-1.15, -1.25, 0.6, 0.28, -45, 0.65) }));
+    case 'lv': // 升级: 「Lv」, two chunky strokes
+      return g(tok(['M-2.9-2.5V2.3H-0.5', 'M0.5-0.6L1.75 2.3L3-0.6'], fx.c ?? PAL.accent, { sw: 1.15, dep: 0.42, yaw: fx.yaw }));
+    case 'trophy': { // 大庆祝: a little gold cup, its base at (x, y)
+      const c = fx.c ?? PAL.gold;
+      return g(tok(TROPHY_HANDLES, c, { sw: 0.75, dep: 0.45, yaw: fx.yaw })
+        + tok(TROPHY_CUP, c, { dep: 0.6, yaw: fx.yaw, round: 0.5, side: shadeC(c, 0.25),
+          hl: HL(-1.45, -5.9, 0.4, 0.95, 12, 0.7) + `<path d="${STAR_D}" transform="translate(0.35 -5.2) scale(.42)" fill="${tintC(c, 0.5)}"/>` }));
+    }
     case 'plus':
       return g(tok('M-1.55 0H1.55M0-1.55V1.55', fx.c, { sw: 1.2, dep: 0.42 }));
     case 'up':
@@ -801,6 +1150,34 @@ function fxMarkup(fx) {
         ? `<rect x="-2.3" y="-1.05" width="4.6" height="2.1" rx=".4" fill="${col}"/>`
         : `<path d="M-2.5 0.7C-1.5-1.1-0.5 1.4 0.5-0.4S2.2-0.7 2.6 0.8" fill="none" stroke="${col}" stroke-width=".95" stroke-linecap="round"/>`;
       return g(`<g transform="scale(1 ${r2(k)})">${body}</g>`);
+    }
+    // ---- 第二批 (2026-11-12) ----
+    case 'moon': // 看月亮: a small lime crescent with a soft glow (the same sign as the moon bubble)
+      return g(`<g transform="translate(-1.2 0)">${glow(5, MOONC, 0.55)}</g>`
+        + tok(MOON_D, MOONC, { dep: 0.55, yaw: fx.yaw, round: 0.4, side: shadeC(MOONC, 0.22), hl: HL(-2.2, -1.1, 0.3, 0.8, 25, 0.6) }));
+    case 'gift': { // 拆礼物: a coral box with a gold ribbon, its base at (x, y); fx.open 0..1 throws the lid off
+      const op = clamp(fx.open ?? 0, 0, 1);
+      const box = tok(GIFT_BOX, CORAL, { dep: 0.65, round: 0.5, hl: HL(-2.1, -2.5, 0.32, 0.8, 8, 0.5) })
+        + tok(GIFT_RIB, PAL.gold, { dep: 0.66, side: shadeC(PAL.gold, 0.25) });
+      const lid = tok(GIFT_LID, tintC(CORAL, 0.1), { dep: 0.6, round: 0.5 })
+        + tok(GIFT_LIDRIB, PAL.gold, { dep: 0.6, side: shadeC(PAL.gold, 0.25) })
+        + tok(GIFT_BOW, PAL.gold, { dep: 0.45, round: 0.35 });
+      const lidG = op > 0.98 ? '' : `<g transform="translate(${r2(2.4 * op)} ${r2(-6 * op)}) rotate(${r2(-25 * op)} 0 -4.2)" opacity="${r2(1 - op * op)}">${lid}</g>`;
+      const shine = op > 0.02 ? `<g transform="translate(0 -4.2)" opacity="${r2(Math.sin(Math.PI * Math.min(1, op * 1.4)))}">${glow(4.5, PAL.gold, 1.2)}</g>` : '';
+      return g(shine + box + lidG);
+    }
+    case 'flash': // 拍照: the camera flash, a warm white veil over the stage
+      return g(glow(fx.r ?? 20, '#FFF8E0', 3));
+    case 'frame': { // 拍照: a photo frame (thicker at the bottom, like an instant photo) around the pet; the window is see-through
+      const a = r2(clamp(fx.a ?? 1, 0, 1));
+      const { x0, x1, y0, y1 } = fx, cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, w = x1 - x0, h = y1 - y0;
+      const rr = (X0, Y0, X1, Y1, r) => `M${r2(X0 + r)} ${r2(Y0)}H${r2(X1 - r)}A${r} ${r} 0 0 1 ${r2(X1)} ${r2(Y0 + r)}V${r2(Y1 - r)}A${r} ${r} 0 0 1 ${r2(X1 - r)} ${r2(Y1)}H${r2(X0 + r)}A${r} ${r} 0 0 1 ${r2(X0)} ${r2(Y1 - r)}V${r2(Y0 + r)}A${r} ${r} 0 0 1 ${r2(X0 + r)} ${r2(Y0)}Z`;
+      const d = rr(-w / 2, -h / 2, w / 2, h / 2, 2.2) + rr(-w / 2 + 3.6, -h / 2 + 3.6, w / 2 - 3.6, h / 2 - 9.5, 0.8);
+      const face = '#FFFDF8', side = '#D8D4C8';
+      const p = (fill, dx, dy, op = 1) => `<path d="${d}" fill="${fill}" fill-rule="evenodd" transform="translate(${dx} ${dy})"${op < 1 ? ` opacity="${op}"` : ''}/>`;
+      return `<g transform="translate(${r2(cx)} ${r2(cy)}) rotate(${r2(fx.rot ?? 0)}) scale(${r2(fx.s ?? 1)})" opacity="${a}">`
+        + p(PAL.shadow, 0.6, 1.8, 0.1) + p(side, 0, 0.9) + p(side, 0, 0.45) + p(face, 0, 0)
+        + `<path d="${rr(-w / 2 + 3.6, -h / 2 + 3.6, w / 2 - 3.6, h / 2 - 9.5, 0.8)}" fill="none" stroke="${side}" stroke-width=".35"/></g>`;
     }
   }
   return '';
@@ -877,6 +1254,28 @@ function floorMarkup(id, cx, cy, rug) {
     + stitchAt(0.955) + stitchAt(border - 0.035)
     + `</g>`;
 }
+const CROWN = new Map();
+/** The top of the outline over the middle of the pet: where the trophy and the loading dots sit. */
+function crownOf(def, b) {
+  if (CROWN.has(def.id)) return CROWN.get(def.id);
+  const polys = analyzeBody(def.body.path).polys, cx = (b.minX + b.maxX) / 2, half = (b.maxX - b.minX) * 0.1;
+  let y0 = b.maxY;
+  for (let x = cx - half; x <= cx + half + 1e-6; x += half / 4) {
+    for (let y = b.minY - 1; y < y0; y += 0.25) if (isInside(polys, x, y)) { y0 = y; break; }
+  }
+  CROWN.set(def.id, y0);
+  return y0;
+}
+const HOLD = new Map();
+/** Where a held thing rests on the pet's left side: the left edge of the outline a little below the middle. */
+function holdOf(def, b) {
+  if (HOLD.has(def.id)) return HOLD.get(def.id);
+  const polys = analyzeBody(def.body.path).polys, y = b.maxY - 0.42 * (b.maxY - b.minY);
+  let x = b.minX;
+  for (let xx = b.minX - 1; xx < (b.minX + b.maxX) / 2; xx += 0.25) if (isInside(polys, xx, y)) { x = xx; break; }
+  HOLD.set(def.id, [x, y]);
+  return [x, y];
+}
 function mountPet(stage, pet, { shadow = true, rug = false } = {}) {
   const def = validateAvatar(pet.def).value;
   const depth = pet.depth;
@@ -942,7 +1341,7 @@ function mountPet(stage, pet, { shadow = true, rug = false } = {}) {
   motionEl.style.transformOrigin = '0 0';
   const anchors = {
     cx: (b.minX + b.maxX) / 2, cy: (b.minY + b.maxY) / 2, top: b.minY, bottom: b.maxY, left: b.minX, right: b.maxX,
-    w: b.maxX - b.minX, h: b.maxY - b.minY, ey: def.eyes.y,
+    w: b.maxX - b.minX, h: b.maxY - b.minY, ey: def.eyes.y, crown: crownOf(def, b), holdL: holdOf(def, b),
   };
   const centers = [def.eyes.x - def.eyes.spacing / 2, def.eyes.x + def.eyes.spacing / 2];
   const uid = `x${++uidN}`;

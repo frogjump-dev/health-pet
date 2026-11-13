@@ -29,6 +29,13 @@ struct HomeScreen: View {
     @State private var foodHidden = false
     /// The pet asks whether to yawn 30 minutes before bed (once ever, after the first on-time moon).
     @State private var askingBedtime = false
+    /// Now, every half minute: the hour before bed brings 看月亮 without a refresh.
+    @State private var clock = Date()
+    /// The last bite: 眼巴巴 waits a while after a meal.
+    @State private var lastBite = Date.distantPast
+    /// 等一下 is on while a refresh takes long (the watch's data on its way).
+    @State private var waitingForData = false
+    @State private var dataTask: Task<Void, Never>?
 
     // feeding
     /// Bubbles popping right now (the model already booked them).
@@ -113,6 +120,7 @@ struct HomeScreen: View {
         .onDisappear {
             onScreen = false
             if tour == .tryIt { tour = nil }
+            waitForData(false)
         }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { greet() }
@@ -126,6 +134,11 @@ struct HomeScreen: View {
             guard onScreen else { return }
             say(stage.lastTapMode == "awake" ? model.petLine(energy: energy) : "Mm… so sleepy.")
         }
+        // 拜托: the pet's one question about notifications
+        .onChange(of: askingBedtime) { _, asking in if asking { stage.react("please") } }
+        .onChange(of: model.isLoading) { _, loading in waitForData(loading) }
+        .task(id: onScreen) { await keepTime() }
+        .task(id: onScreen) { await begNowAndThen() }
         #if DEBUG
         .task(id: stage.isReady) { await debugLaunch() }
         #endif
@@ -139,7 +152,11 @@ struct HomeScreen: View {
     private func topBar(_ pet: Pet3D) -> some View {
         HStack {
             Menu {
-                Picker("Main pet", selection: Binding(get: { model.mainPetID }, set: { model.mainPetID = $0 })) {
+                Picker("Main pet", selection: Binding(get: { model.mainPetID }, set: {
+                    model.mainPetID = $0
+                    // 点点头: the new main pet nods once it is on the stage
+                    stage.react("nod", pet: model.mainPet3D.id)
+                })) {
                     ForEach(model.unlockedPets) { p in
                         Text(p.name).tag(p.rosterID)
                     }
@@ -219,9 +236,18 @@ struct HomeScreen: View {
     }
 
     private func stageConfig(pet: Pet3D, box: PetStageConfig.Box) -> PetStageConfig {
-        // No daily mood any more (PRD v0.3): how the pet idles follows only its energy.
+        // No mood from the health data (PRD v0.3): how the pet idles follows its energy, and today's
+        // base state only the clock and the user's own choices (PRD §5.3): 看月亮 in the hour before
+        // bed, 放假 on a leave day; 呼呼 among the idle moves once a workout is booked.
         // each pet keeps its own outfit; switching the main pet switches what home shows (PRD v0.3 §5.4)
-        PetStageConfig(pet: pet.id, rug: true, dark: scheme == .dark, bedtime: model.isPetAsleep,
+        #if DEBUG
+        // simulator: -hp3dMood rest|bedtime shows 放假 / 看月亮 at any time
+        let mood = UserDefaults.standard.string(forKey: "hp3dMood") ?? model.petMood(at: clock)
+        #else
+        let mood = model.petMood(at: clock)
+        #endif
+        return PetStageConfig(pet: pet.id, rug: true, dark: scheme == .dark, bedtime: model.isPetAsleep,
+                       mood: mood, workedOut: model.workoutBookedToday,
                        energy: energy.rawValue, decor: model.dressUp.outfit(for: pet.id), box: box)
     }
 
@@ -274,6 +300,7 @@ struct HomeScreen: View {
             withTransaction(quiet) { eating[bubble.id] = nil }
             try? await Task.sleep(for: .seconds(Feed.swallowAt - 0.34))
             bites += 1
+            lastBite = Date()
             try? await Task.sleep(for: .seconds(Feed.landsAt - Feed.swallowAt))
             land(landing)
             try? await Task.sleep(for: .seconds(Feed.endsAt - Feed.landsAt))
@@ -293,6 +320,7 @@ struct HomeScreen: View {
         let feedback = withAnimation(.easeOut(duration: 0.3)) { model.book(bubble.credit) }
         stage.feed(at: CGPoint(x: at.x / layout.size.width, y: at.y / layout.size.height), then: feedback.expression)
         bites += 1
+        lastBite = Date()
         if let tag = feedback.tag { say(tag) }
         inFlight += 1
         Task { @MainActor in
@@ -504,6 +532,7 @@ struct HomeScreen: View {
     /// How long each moment holds the stage (the expressions' lengths in engine.js).
     private static let lengths: [String: Double] = [
         "proud": 3.2, "hop": 2.76, "cheer": 3.4, "starry": 2.8, "love": 3.0, "cheerup": 3.8, "confused": 3.2,
+        "levelup": 3.2, "bigcheer": 4.8, "hello": 3.0, "missyou": 4.8,
     ]
 
     private func greet() {
@@ -541,12 +570,20 @@ struct HomeScreen: View {
             start = 5.2
             if let reveal = model.morningReveal(levelUps: home.takeLevelUps(model.petLevels)) {
                 moments.append(Moment(expression: reveal.expression, line: reveal.line))
+            } else if home.daysAway >= 3 {
+                // 想你了: away 3 days or more. Only missing you, never the lapse or the progress.
+                moments.append(Moment(expression: "missyou", line: "I missed you!"))
             } else if home.daysAway >= 2 || model.cameBackAfterLapse {
                 moments.append(Moment(expression: "cheerup", line: "New day. Let's go again!"))
             }
             if let days = model.anniversaryToday {
                 moments.append(Moment(expression: "love", line: "\(days) days together!"))
             }
+        }
+
+        // 打招呼: back after a few hours on the same day
+        if !morning, home.takeHelloAfterAway() {
+            moments.append(Moment(expression: "hello", line: nil))
         }
 
         if model.dataMissing, home.takeOnceToday("confused") {
@@ -566,12 +603,27 @@ struct HomeScreen: View {
             return week.isDisciplined && model.store.adoptedOn < weekEnd && home.takeWeekCelebration(weekStart: week.weekStart)
         }
         let weekDone = doneWeek != nil
+        // a monthly achievement only comes with a week that counts; the first look only remembers
+        let newMonth = home.takeNewMonth(count: model.monthlyAchievements)
         if weekDone {
             cardWeek = doneWeek?.weekStart == model.week?.weekStart ? nil : doneWeek
-            moments.append(Moment(expression: "cheer", line: "Disciplined week ✓"))
+            // 大庆祝 for a monthly achievement or every 10 disciplined weeks, the cheer otherwise
+            let total = model.disciplinedWeekTotal
+            if newMonth {
+                moments.append(Moment(expression: "bigcheer", line: "Disciplined month ✓"))
+            } else if total > 0, total % 10 == 0 {
+                moments.append(Moment(expression: "bigcheer", line: "\(total) disciplined weeks!"))
+            } else {
+                moments.append(Moment(expression: "cheer", line: "Disciplined week ✓"))
+            }
             if model.disciplinedWeekTotal == 1 {
                 moments.append(Moment(expression: "love", line: "Our first disciplined week!"))
             }
+        }
+
+        // 大庆祝 for the big round numbers (PRD §8.4): 30 and 100 on-time nights, 100 workouts
+        for milestone in home.takeMilestones(model.milestonesReached) {
+            moments.append(Moment(expression: "bigcheer", line: AppModel.milestoneLine(milestone)))
         }
 
         if !morning, moments.isEmpty, model.almostWorkout, home.takeOnceToday("almost") {
@@ -634,6 +686,56 @@ struct HomeScreen: View {
         }
     }
 
+    /// Keeps `clock` within half a minute of now while home is on screen (the hour before bed).
+    private func keepTime() async {
+        while onScreen, !Task.isCancelled {
+            clock = Date()
+            try? await Task.sleep(for: .seconds(30))
+        }
+    }
+
+    /// 眼巴巴 (PRD §5.3): while food waits, the pet eyes the nearest bubble every 14–18 s; never
+    /// during the wake-up, the tour, a meal (and 10 s after it), the bedtime question or a gift.
+    private func begNowAndThen() async {
+        guard onScreen else { return }
+        try? await Task.sleep(for: .seconds(6))
+        while onScreen, !Task.isCancelled {
+            if let target = begTarget() { stage.beg(toward: target) }
+            try? await Task.sleep(for: .seconds(Double.random(in: 14...18)))
+        }
+    }
+
+    /// The bubble the pet would look at, as a fraction of its page; nil when it shouldn't now.
+    private func begTarget() -> CGPoint? {
+        guard scenePhase == .active, stage.isReady, !model.isPetAsleep, !foodHidden, !askingBedtime, inFlight == 0,
+              tour == nil || tour == .tryIt, gift == nil, !weekCard, Date().timeIntervalSince(lastBite) > 10,
+              let scene = spots["scene"] else { return nil }
+        let pet = model.mainPet3D
+        let layout = HomeLayout(size: scene.size, anchors: stage.anchors(for: pet.id) ?? .standard, outfitTop: stage.outfitTop(for: pet.id))
+        let eyes = CGPoint(x: layout.size.width / 2, y: layout.stageRect.minY + layout.anchors.ey / 100 * layout.stageSide)
+        let nearest = model.foodBubbles.map { layout.slot($0.slot) }
+            .min { hypot($0.x - eyes.x, $0.y - eyes.y) < hypot($1.x - eyes.x, $1.y - eyes.y) }
+        return nearest.map { CGPoint(x: $0.x / layout.size.width, y: $0.y / layout.size.height) }
+    }
+
+    /// 等一下 (PRD §5.3): a refresh that takes over a second (the watch's data on its way) — the pet
+    /// keeps looking until it is in, then finds it and nods.
+    private func waitForData(_ loading: Bool) {
+        dataTask?.cancel()
+        if loading {
+            dataTask = Task { @MainActor in
+                try? await Task.sleep(for: .seconds(1))
+                // not during the morning's wake-up (the food waits for it too)
+                guard !Task.isCancelled, model.isLoading, onScreen, !foodHidden, !model.isPetAsleep, !waitingForData else { return }
+                waitingForData = true
+                stage.react("wait", hold: true)
+            }
+        } else if waitingForData {
+            waitingForData = false
+            stage.endHold("wait")
+        }
+    }
+
     private func say(_ text: String) {
         guard feeds.isEmpty else { return }   // a harvest's tag has that place
         lineTask?.cancel()
@@ -691,10 +793,20 @@ struct HomeScreen: View {
     /// For screenshots on the simulator, once the pet is ready:
     /// -hp3dFeed all (or a bubble kind: workout, steps, night, load) eats the bubbles one by one;
     /// -hp3dTour 1|2|3|tryit shows that tour step; -hp3dNote asleep|slept|week|day opens that note;
-    /// -hp3dAskBedtime YES shows the pet's one question about the bedtime reminder.
+    /// -hp3dAskBedtime YES shows the pet's one question about the bedtime reminder;
+    /// -hp3dReact <expression> plays it after 3 s (wait and gift are let go 4 s later).
     private func debugLaunch() async {
         guard stage.isReady else { return }
         let defaults = UserDefaults.standard
+        if let id = defaults.string(forKey: "hp3dReact") {
+            try? await Task.sleep(for: .seconds(3))
+            let hold = id == "wait" || id == "gift"
+            stage.react(id, hold: hold)
+            if hold {
+                try? await Task.sleep(for: .seconds(4))
+                stage.endHold(id)
+            }
+        }
         if defaults.bool(forKey: "hp3dAskBedtime") {
             try? await Task.sleep(for: .seconds(3))
             lineTask?.cancel()

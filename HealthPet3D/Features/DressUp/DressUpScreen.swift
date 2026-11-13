@@ -4,7 +4,8 @@ import PetCore
 /// Dress up (PRD v0.3 §5.4, design v1 of 2026-11-12, D03–D09): the pet on its stage in what it
 /// wears now, five slot tabs, the wardrobe (None first, then the fixed order; items not drawn yet
 /// are grey silhouettes), and at the bottom the points and Draw · 5. A tap puts an item on (the
-/// one in the same slot comes off) and the pet puffs up proudly; a second tap or None takes it off.
+/// one in the same slot comes off) and the pet shows it off (照一照); a second tap or None takes it off.
+/// While a draw's box waits to be opened, the pet stares at a little box of its own (拆礼物).
 /// The wardrobe is shared, each pet keeps its own outfit.
 struct DressUpScreen: View {
     let petID: String
@@ -59,7 +60,7 @@ struct DressUpScreen: View {
         .overlay {
             if let gift {
                 GiftSheet(gift: gift, collected: wardrobe.collected, pointsLeft: wardrobe.points,
-                          wear: { wearGift(gift, on: pet) }, later: { putAway(gift) })
+                          wear: { wearGift(gift, on: pet) }, later: { putAway(gift) }, onOpen: { opened(gift) })
             }
         }
         .animation(.easeOut(duration: 0.25), value: gift)
@@ -196,7 +197,7 @@ struct DressUpScreen: View {
                 model.dressUp.takeOff(decor.slot, from: pet.id)
             } else {
                 model.dressUp.wear(decor.id, on: pet.id)
-                PetStage.shared.celebrate("proud")
+                PetStage.shared.react("mirror")
             }
         } label: {
             tileFace(selected: worn) {
@@ -343,13 +344,24 @@ struct DressUpScreen: View {
         }
         note = nil
         gift = GiftReveal(item: id, petName: pet.name)
+        PetStage.shared.react("gift", hold: true)
+    }
+
+    /// The box is open: the pet's box pops open too; the last item of all gets 大庆祝 after that.
+    private func opened(_ gift: GiftReveal) {
+        PetStage.shared.endHold("gift")
+        guard wardrobe.allCollected else { return }
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(2))
+            PetStage.shared.celebrate("bigcheer")
+        }
     }
 
     private func wearGift(_ gift: GiftReveal, on pet: Pet3D) {
         if let decor = Decor.with(id: gift.item) { slot = decor.slot }
         model.dressUp.wear(gift.item, on: pet.id)
         self.gift = nil
-        PetStage.shared.celebrate("proud")
+        PetStage.shared.react("mirror")
     }
 
     private func putAway(_ gift: GiftReveal) {
@@ -382,6 +394,7 @@ struct DressUpScreen: View {
         if defaults.bool(forKey: "hp3dDressGift") {
             let id = (wardrobe.canDraw ? model.dressUp.draw() : nil) ?? "butterfly"
             gift = GiftReveal(item: id, petName: pet.name)
+            PetStage.shared.react("gift", hold: true)
         }
     }
     #endif

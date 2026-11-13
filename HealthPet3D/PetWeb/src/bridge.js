@@ -1,6 +1,7 @@
 // ===================================================================================
 // HealthPet 3D app bridge. The page holds one living pet (mountPet + createDirector from
-// engine.js / live.js, unchanged from the 3D方案 preview); the SwiftUI app drives it through
+// engine.js / live.js, unchanged from the 3D方案 preview: 41 expressions since 2026-11-13); the
+// SwiftUI app drives it through
 // window.Pet and hears back through webkit.messageHandlers.pet.
 // ===================================================================================
 const PETS = Object.fromEntries(FAMILIES.flatMap((f) => f.pets).map((p) => [p.def.id, p]));
@@ -16,10 +17,17 @@ const stage = document.getElementById('stage');
 window.addEventListener('error', (e) => post({ type: 'error', message: `${e.message} @${e.lineno}:${e.colno}` }));
 window.addEventListener('unhandledrejection', (e) => post({ type: 'error', message: String(e.reason) }));
 // decor: the decoration ids the pet wears (decor.js, PRD §5.4), at most one per slot.
-const cfg = { pet: 'toast', rug: false, shadow: true, dark: false, canvas: null, bedtime: false, mood: 'normal', energy: 'normal', calm: false, interactive: true, still: null, decor: [],
+// mood: today's base state, 'normal', 'rest' (a leave day: 放假) or 'bedtime' (the hour before bed: 看月亮).
+// workedOut: a workout is booked today, so 呼呼 comes up now and then among the idle moves.
+const cfg = { pet: 'toast', rug: false, shadow: true, dark: false, canvas: null, bedtime: false, mood: 'normal', energy: 'normal', calm: false, interactive: true, still: null, decor: [], workedOut: false,
   // where the pet's 100 × 100 box sits in the page, as fractions of the page width / height
   box: { x: 0.19, y: 0.245, size: 0.62 } };
 let pet = null, dir = null, decor = null, raf = 0, last = 0, paused = false, gulp = -1, gulpAmp = 1;
+// the top of the pet's head, where some effects sit (anchors.crown), before a hat lifts it
+let baseCrown = 0;
+// the last moment asked for a given pet: if that pet is mounted (again) right after — a pet's page
+// opens, the main pet changes, a screen without the floor takes the pet — it plays then
+let waiting = null;
 // seconds the decorations have been moving (rain, the pinwheel, jet flames); it stands still under Reduce Motion
 let clock = 0;
 
@@ -67,10 +75,12 @@ function mount() {
   const p = PETS[cfg.pet] || PETS.toast;
   decor?.destroy();
   pet = mountPet(stage, p, { rug: cfg.rug, shadow: cfg.shadow });
+  baseCrown = pet.anchors.crown;
   decor = mountDecor(pet, { items: [] });
   decor.set(cfg.decor || []);
   dir = createDirector(pet.anchors, { timing: cfg.bedtime ? BEDTIME : AWAKE, seed: 5 });
   if (cfg.mood !== 'normal') dir.setMood(cfg.mood);
+  if (cfg.workedOut) dir.setWorkedOut(true);
   if (cfg.still) drawStill(cfg.still);
   else { const st = dir.update(0); pet.frame(st); decor.frame(st, clock, 0); }
   const a = pet.anchors;
@@ -80,28 +90,72 @@ function mount() {
   // two frames later the pet is on screen: the app takes away the still picture it showed meanwhile
   requestAnimationFrame(() => requestAnimationFrame(() => post({ type: 'drawn', pet: p.def.id })));
   reportOutfit();
+  if (waiting && waiting.o.pet === p.def.id && performance.now() - waiting.at < 2000) {
+    const w = waiting;
+    waiting = null;
+    react(w.id, { ...w.o, pet: undefined });
+  }
+}
+
+/**
+ * One of the app's moments (PRD §5.3) at the expression's own priority: 眼巴巴 (beg) only while the
+ * pet is awake and free, aimed at `o.at` (a bubble, fractions of the page); `o.hold` keeps 等一下 and
+ * 拆礼物 going until release(id); `o.prio` overrides the priority; `o.pet` = only for that pet.
+ */
+function react(id, o = {}) {
+  if (!EXPR_BY_ID[id]) return;
+  if (o.pet) {
+    waiting = { id, o, at: performance.now() };
+    if (!dir || o.pet !== cfg.pet) return;
+  }
+  if (!dir || cfg.still) return;
+  const ask = {};
+  if (o.hold) ask.hold = true;
+  if (o.prio !== undefined) ask.prio = o.prio;
+  if (id === 'beg') {
+    const st = dir.status();
+    if (st.event || st.mode !== 'awake') return;
+    if (o.at) {
+      // the same axes as the preview: -1..1 from the eyes, 30% of the page width = all the way
+      const r = stage.getBoundingClientRect(), a = pet.anchors, k = window.innerWidth * 0.3;
+      const ex = r.left + (a.cx / 100) * r.width, ey = r.top + (a.ey / 100) * r.height;
+      ask.aim = { x: clamp((o.at.x * window.innerWidth - ex) / k, -1, 1), y: clamp((o.at.y * window.innerHeight - ey) / k, -1, 1) };
+    }
+  } else {
+    dir.activity();
+  }
+  dir.request(id, ask);
 }
 
 /** How high the outfit reaches (a tall hat, a surfboard on the back), in the stage's 0–100 box
- *  like the anchors; null when it wears nothing. The app keeps its speech bubble above it. */
-function outfitTop() {
+ *  like the anchors; null when it wears nothing. The app keeps its speech bubble above it.
+ *  `near`: only what is within that distance of the pet's middle (what sits on its head). */
+function outfitTop(near = Infinity) {
   const layer = pet?.host.querySelector('[data-decor]');
   if (!layer || !(cfg.decor || []).length) return null;
+  const r = stage.getBoundingClientRect();
+  const mid = r.left + (pet.anchors.cx / 100) * r.width, reach = (near / 100) * r.width;
   let top = Infinity;
   for (const el of layer.querySelectorAll('path, circle, ellipse, rect, polygon')) {
     // a stripe painted on a piece is wider than it and clipped to it: the piece itself counts
     if (el.closest('[clip-path]')) continue;
     const b = el.getBoundingClientRect();
-    if (b.width > 0 && b.height > 0) top = Math.min(top, b.top);
+    if (b.width > 0 && b.height > 0 && b.left < mid + reach && b.right > mid - reach) top = Math.min(top, b.top);
   }
   if (!isFinite(top)) return null;
-  const r = stage.getBoundingClientRect();
   return r.height > 0 ? Math.round(((top - r.top) / r.height) * 1000) / 10 : null;
 }
-/** Two frames after an outfit is put on (it is drawn by then), tell the app how high it reaches. */
+/** Two frames after an outfit is put on (it is drawn by then), tell the app how high it reaches,
+ *  and lift what the expressions put on top of the head (升级's Lv, 等一下's dots, 呼呼's drops)
+ *  above a hat, so the hat doesn't cover them. */
 function reportOutfit() {
   const id = cfg.pet;
-  requestAnimationFrame(() => requestAnimationFrame(() => { if (id === cfg.pet) post({ type: 'outfit', pet: id, top: outfitTop() }); }));
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    if (id !== cfg.pet || !pet) return;
+    const hat = outfitTop(12);
+    pet.anchors.crown = hat === null ? baseCrown : Math.min(baseCrown, hat - 1);
+    post({ type: 'outfit', pet: id, top: outfitTop() });
+  }));
 }
 
 /** A posed, motionless frame, for the pictures the app shows in grids and share cards. */
@@ -145,7 +199,9 @@ function feedTick(dt, st) {
       f.done = true;
       gulp = 0; gulpAmp = 1;
       dir.activity();
-      if (f.then === 'giggle') dir.play('giggle', { endAt: 1.6 });
+      // 好吃 after a plain bite (it took over from the borrowed 被挠痒, 2026-11-13); a level, an on-time night: a moment
+      if (f.then === 'yum') dir.play('yum');
+      else if (f.then === 'giggle') dir.play('giggle', { endAt: 1.6 });
       else if (f.then) dir.request(f.then, { prio: 3 });
     }
   }
@@ -230,6 +286,7 @@ window.Pet = {
     const mood = o.mood && o.mood !== cfg.mood;
     const energy = o.energy && o.energy !== cfg.energy;
     const outfit = Array.isArray(o.decor) && o.decor.join(',') !== (cfg.decor || []).join(',');
+    const worked = o.workedOut !== undefined && !!o.workedOut !== !!cfg.workedOut;
     Object.assign(cfg, o);
     if (remount) { mount(); return; }
     applyTheme();
@@ -246,27 +303,33 @@ window.Pet = {
     if (energy) applyEnergy();
     if (bedtime) dir.setTiming(cfg.bedtime ? BEDTIME : AWAKE);
     if (mood) dir.setMood(cfg.mood);
+    if (worked) dir.setWorkedOut(cfg.workedOut);
   },
   /** Stop drawing while the pet is off screen; start again where it was. */
   pause(on) { paused = !!on; if (!paused) run(); },
   /** First open of the day: 醒来, played to the end. */
   morning() { dir?.morning(); },
-  /** A moment that always plays to the end (cheer, starry, proud, hop, love, cheerup, confused). */
-  celebrate(id) { dir?.request(id, { prio: 3 }); },
+  /** A moment that always plays to the end (cheer, starry, proud, hop, love, cheerup, confused,
+   *  levelup, bigcheer, missyou, hello…), in the order asked. */
+  celebrate(id) { if (EXPR_BY_ID[id]) dir?.request(id, { prio: 3 }); },
+  /** A moment at the expression's own priority (see react above): beg, nod, mirror, please, wait, gift… */
+  react(id, o = {}) { react(id, o); },
+  /** 等一下 / 拆礼物 can stop waiting: the data is in, the box is opened. */
+  release(id) { if (waiting?.id === id) waiting = null; dir?.release(id); },
   /** Any expression, as if picked from the list. */
   play(id) { dir?.play(id); },
   /** A food bubble reached the pet's mouth. */
-  eat() { if (!dir) return; gulp = 0; gulpAmp = 1; dir.activity(); dir.play('giggle', { endAt: 1.6 }); },
+  eat() { if (!dir) return; gulp = 0; gulpAmp = 1; dir.activity(); dir.play('yum'); },
   /**
    * A food bubble at (x, y) (fractions of the page) was tapped: the pet watches its crumbs come,
-   * chews, and at 1.06 s swallows and plays `then` (giggle, or a moment such as proud or cheer).
+   * chews, and at 1.06 s swallows and plays `then` (yum, or a moment such as proud, levelup or bigcheer).
    */
   feed(o = {}) {
     if (!dir || !pet) return;
     dir.activity();
     const [mx, my] = mouthPx();
     feeds.push({ t: 0, x: (o.x ?? 0.5) * window.innerWidth, y: (o.y ?? 0.3) * window.innerHeight, mx, my,
-      then: o.then ?? 'giggle', bites: [0.81, 0.91, 1.01], done: false });
+      then: o.then ?? 'yum', bites: [0.81, 0.91, 1.01], done: false });
   },
   /**
    * The app's pictures of dressed pets (PetSnapper, a second hidden page): show this still on

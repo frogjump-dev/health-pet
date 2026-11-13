@@ -11,6 +11,7 @@ import PetCore
 struct FirstOpenScreen: View {
     @Environment(AppModel.self) private var model
     @Environment(HomeState.self) private var home
+    @Environment(\.colorScheme) private var scheme
 
     private enum Step: Int { case hello, health, bedtime, reading, pets }
     @State private var step: Step = {
@@ -67,11 +68,13 @@ struct FirstOpenScreen: View {
     private var hello: some View {
         VStack(spacing: 0) {
             Spacer()
-            PetPicture(pet: .toast, happy: true)
+            livePet
                 .frame(width: 250, height: 250)
                 .background(alignment: .bottom) {
                     Ellipse().fill(Jade.accent.opacity(0.16)).frame(width: 230, height: 40).offset(y: 6)
                 }
+                // 打招呼 (PRD §5.3): Toast says hello on the first page
+                .onAppear { PetStage.shared.react("hello", pet: Pet3D.toast.id) }
             Text("Hi, I’m Toast.")
                 .scaledFont(26, .bold)
                 .foregroundStyle(Jade.ink)
@@ -89,6 +92,13 @@ struct FirstOpenScreen: View {
         .frame(maxWidth: .infinity)
     }
 
+    /// Toast, alive, filling the frame it is given (the app's one living pet, PRD §9 D1).
+    private var livePet: some View {
+        LivePet(config: PetStageConfig(pet: Pet3D.toast.id, dark: scheme == .dark, box: .init(x: 0, y: 0, size: 1)))
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Toast")
+    }
+
     // MARK: - ② What it reads
 
     private var health: some View {
@@ -101,7 +111,13 @@ struct FirstOpenScreen: View {
                 readRow("waveform.path.ecg", "Heart rate", "Only for how rested you are")
             }
             .padding(.top, 24)
-            Spacer()
+            Spacer(minLength: 8)
+            // 拜托 (PRD §5.3): Toast asks nicely before the system's Health sheet
+            livePet
+                .frame(width: 150, height: 150)
+                .frame(maxWidth: .infinity)
+                .onAppear { PetStage.shared.react("please", pet: Pet3D.toast.id) }
+            Spacer(minLength: 8)
             Text("Everything is worked out on your phone. Your health data never leaves it, and you can turn any of these off in the Health app.")
                 .scaledFont(12, .medium)
                 .foregroundStyle(Jade.ink2)
@@ -147,7 +163,7 @@ struct FirstOpenScreen: View {
     private var reading: some View {
         VStack(spacing: 0) {
             Spacer()
-            PetPicture(pet: .toast)
+            livePet
                 .frame(width: 210, height: 210)
                 .background(alignment: .bottom) {
                     Ellipse().fill(Jade.accent.opacity(0.16)).frame(width: 190, height: 34).offset(y: 6)
@@ -169,15 +185,18 @@ struct FirstOpenScreen: View {
         .frame(maxWidth: .infinity)
         .task {
             // the bar takes 2.5 s at least, and waits for the data (usually 2–5 s); read again
-            // now so the levels follow the bedtime just chosen
+            // now so the levels follow the bedtime just chosen. Toast looks around meanwhile
+            // (等一下, PRD §5.3), then finds it and nods before the next page.
+            PetStage.shared.react("wait", pet: Pet3D.toast.id, hold: true)
             withAnimation(.easeInOut(duration: 2.5)) { progress = 0.9 }
             let started = Date()
             while model.isLoading { try? await Task.sleep(for: .milliseconds(200)) }
             await model.refresh()
             let left = 2.5 - Date().timeIntervalSince(started)
             if left > 0 { try? await Task.sleep(for: .seconds(left)) }
+            PetStage.shared.endHold("wait")
             withAnimation(.easeOut(duration: 0.3)) { progress = 1 }
-            try? await Task.sleep(for: .seconds(0.4))
+            try? await Task.sleep(for: .seconds(2.2))
             step = .pets
         }
     }
