@@ -81,6 +81,19 @@ extension AppModel {
     /// Today has a workout or a 10k-step day, as the data has it (booked or not).
     var workedOut: Bool { today.map(discipline.countsAsWorkout) ?? false }
 
+    /// A workout (or a 10k day) of today is booked: the pet gets 呼呼 among its idle moves (PRD §5.3).
+    var workoutBookedToday: Bool {
+        let today = Calendar.current.startOfDay(for: Date())
+        return creditBook.records.contains { ($0.kind == .workout || $0.kind == .steps) && $0.day == today }
+    }
+
+    /// Today's base state for the pet (PRD §5.3): "bedtime" in the hour before the target bedtime
+    /// (看月亮), "rest" on a leave day (放假), otherwise "normal".
+    func petMood(at date: Date = Date()) -> String {
+        if sleepSchedule.isHourBeforeBed(at: date) { return "bedtime" }
+        return lastNightIsLeave ? "rest" : "normal"
+    }
+
     /// Today's booked check-ins: an on-time night and a workout (or a 10k-step day).
     var checkInsToday: Int {
         ((bookedToday.flatMap(discipline.isOnTimeNight) ?? false) ? 1 : 0) + ((bookedToday.map(discipline.countsAsWorkout) ?? false) ? 1 : 0)
@@ -90,10 +103,14 @@ extension AppModel {
     var mainWorkout: WorkoutSession? { today?.allWorkouts.max { $0.minutes < $1.minutes } }
 
     /// The day's line after the morning wake-up (早上揭晓), and the expression that goes with it.
-    /// Only good news: a level-up (collected overnight) hops; an on-time night is said, and the
-    /// proud look comes when its moon is eaten (§4.4). Otherwise nothing is said.
+    /// Only good news: a level-up (collected overnight) gets 升级 (大庆祝 at Lv 10 and 20); an
+    /// on-time night is said, and the proud look comes when its moon is eaten (§4.4). Otherwise
+    /// nothing is said.
     func morningReveal(levelUps: [Pet3D]) -> (expression: String?, line: String)? {
-        if let pet = levelUps.first { return ("hop", "\(pet.name) is Lv \(record(pet).level) now!") }
+        if let pet = levelUps.first {
+            let level = record(pet).level
+            return (BookingFeedback.levelMoment(level), "\(pet.name) is Lv \(level) now!")
+        }
         if sleptOnTime { return (nil, nightBooked ? "On time last night ✓" : "On time last night!") }
         return nil
     }

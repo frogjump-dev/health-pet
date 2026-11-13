@@ -402,6 +402,16 @@ struct SleepSchedule: Codable, Equatable {
         return bed > wake ? (now >= bed || now < wake) : (now >= bed && now < wake)
     }
 
+    /// The hour before the target bedtime (the pet looks at the moon, PRD §5.3); bedtime itself is not.
+    func isHourBeforeBed(at date: Date, calendar: Calendar = .current) -> Bool {
+        let now = calendar.component(.hour, from: date) * 60 + calendar.component(.minute, from: date)
+        let today = calendar.startOfDay(for: date)
+        let morning = now < 12 * 60 ? today : calendar.date(byAdding: .day, value: 1, to: today) ?? today
+        let bed = targets(nightEnding: morning, calendar: calendar).bed
+        let untilBed = ((bed - now) % 1440 + 1440) % 1440
+        return untilBed > 0 && untilBed <= 60 && !isBedtime(at: date, calendar: calendar)
+    }
+
     /// "23:00" / "11:00 PM", "00:30" / "12:30 AM", in the clock style chosen in Settings.
     static func clock(_ minutes: Int) -> String { Format.time(minutes: minutes) }
 }

@@ -134,7 +134,7 @@ function createLiveIdle(seed = 7) {
 }
 
 // ---------- 3 + 4. the director: who gets the stage, and dozing off ----------
-const GROUP_PRIO = { idle: 0.5, care: 1, sleep: 1, touch: 2, cheer: 3 };
+const GROUP_PRIO = { idle: 0.5, care: 1, sleep: 1, touch: 2, cheer: 3, new: 2, new2: 2 }; // a new expression may set its own prio
 const FIDGETS = ['lookaround', 'daydream', 'hum', 'stretch', 'bored'];
 const TAP_POOL = ['shy', 'surprised', 'tilt', 'wink'];
 
@@ -144,7 +144,8 @@ function createDirector(anchors, opts = {}) {
   const R = (a, b) => a + (b - a) * rnd();
   const timing = { drowsy: 45, asleep: 120, ...(opts.timing || {}) };
   let mode = 'awake';      // awake → drowsy → asleep
-  let mood = 'normal';     // today's condition: normal | tired | sad
+  let mood = 'normal';     // today's condition: normal | tired | sad | rest (请假) | bedtime (睡前一小时)
+  let workedOut = false;   // a workout is in today: 呼呼 joins the idle fidgets
   let quiet = 0, clock = 0, fidgetIn = R(8, 14);
   let cur = null, queue = [];
   let taps = [], lastPick = -1;
@@ -154,13 +155,19 @@ function createDirector(anchors, opts = {}) {
   // sources
   let srcN = 0;
   const liveSrc = () => ({ key: 'base:live', id: 'live', advance: (dt) => live.update(dt), eval: () => live.state() });
-  function exprSrc(id, loop, key) {
+  function exprSrc(id, loop, key, ev) {
     const e = EXPR_BY_ID[id];
+    const c = ev && ev.aim ? { ...anchors, aim: ev.aim } : anchors; // 眼巴巴: where the bubble is
+    const seg = ev && e.holdSeg; // 等一下: while held, keep looping this stretch
     let t = 0;
-    return { key: key ?? `ev:${id}:${++srcN}`, id, advance: (dt) => { t += dt; },
-      eval: () => e.f(loop ? ((t % e.dur) + e.dur) % e.dur : Math.min(t, e.dur - 1e-3), anchors) };
+    const src = { key: key ?? `ev:${id}:${++srcN}`, id,
+      advance: (dt) => { t += dt; if (seg && ev.hold && t >= seg[1]) t = seg[0] + ((t - seg[0]) % (seg[1] - seg[0])); },
+      eval: () => e.f(loop ? ((t % e.dur) + e.dur) % e.dur : Math.min(t, e.dur - 1e-3), c),
+      time: () => t };
+    if (ev) ev.src = src;
+    return src;
   }
-  const baseId = () => (mode === 'asleep' ? 'sleep' : mode === 'drowsy' ? 'doze' : mood === 'tired' ? 'tired' : mood === 'sad' ? 'sad' : 'live');
+  const baseId = () => (mode === 'asleep' ? 'sleep' : mode === 'drowsy' ? 'doze' : mood === 'tired' ? 'tired' : mood === 'sad' ? 'sad' : mood === 'rest' ? 'holiday' : mood === 'bedtime' ? 'moon' : 'live');
   const baseSrc = () => { const id = baseId(); return id === 'live' ? liveSrc() : exprSrc(id, true, `base:${id}`); };
 
   // A hand-over cross-fades from the old source (still playing) to the new one. If another hand-over
@@ -183,7 +190,7 @@ function createDirector(anchors, opts = {}) {
   function start(ev) {
     cur = ev; ev.el = 0;
     const e = EXPR_BY_ID[ev.id];
-    switchTo(exprSrc(ev.id, e.loop || ev.hold));
+    switchTo(exprSrc(ev.id, e.loop || ev.hold, undefined, ev));
     emit('start');
   }
   function next() {
@@ -199,9 +206,9 @@ function createDirector(anchors, opts = {}) {
    */
   function request(id, o = {}) {
     const e = EXPR_BY_ID[id];
-    const prio = o.prio ?? GROUP_PRIO[e.group];
+    const prio = o.prio ?? e.prio ?? GROUP_PRIO[e.group];
     const ev = {
-      id, prio, at: clock, hold: !!o.hold,
+      id, prio, at: clock, hold: !!o.hold, aim: o.aim,
       kind: o.kind ?? (prio >= 3 ? 'event' : prio >= 2 ? 'touch' : 'ambient'),
       minDwell: o.minDwell ?? (prio >= 3 ? e.dur : prio >= 2 ? 0.9 : 0),
       interruptible: o.interruptible ?? prio < 3,
@@ -251,6 +258,16 @@ function createDirector(anchors, opts = {}) {
       cur.endAt = Math.max(d, Math.ceil(cur.el / d) * d); // finish the stroke it is in
     }
   }
+  /** End a hold (等一下: the data is in): it plays on from where it is to its end. */
+  function release(id) {
+    queue.forEach((q) => { if (q.id === id) q.hold = false; });
+    if (cur && cur.id === id && cur.hold) {
+      cur.hold = false;
+      const e = EXPR_BY_ID[id];
+      if (e.holdSeg && cur.src) cur.endAt = cur.el + Math.max(0, e.dur - cur.src.time());
+      else cur.endAt = Math.max(e.dur, Math.ceil(cur.el / e.dur) * e.dur);
+    }
+  }
   /** First open of the day: whatever it was doing, it plays 醒来 to the end. */
   function morning() {
     quiet = 0; taps = []; queue = [];
@@ -270,7 +287,10 @@ function createDirector(anchors, opts = {}) {
     if (mode === 'drowsy' && quiet > timing.asleep) { mode = 'asleep'; emit('mode'); }
     if (mode === 'awake' && mood === 'normal' && !cur) {
       fidgetIn -= dt;
-      if (fidgetIn <= 0) { request(FIDGETS[Math.floor(rnd() * FIDGETS.length)], { prio: 0.5, kind: 'ambient' }); fidgetIn = R(12, 22); }
+      if (fidgetIn <= 0) {
+        const pool = workedOut ? FIDGETS.concat(['puff', 'puff']) : FIDGETS; // after a workout, 呼呼 comes up about every third fidget
+        request(pool[Math.floor(rnd() * pool.length)], { prio: 0.5, kind: 'ambient' }); fidgetIn = R(12, 22);
+      }
     }
     if (cur) {
       cur.el += dt;
@@ -292,13 +312,14 @@ function createDirector(anchors, opts = {}) {
   }
 
   return {
-    update, request, tap, holdStart, holdEnd, play, activity, morning,
+    update, request, tap, holdStart, holdEnd, play, activity, morning, release,
     state: () => out ?? show.eval(),
     setMood(m) { mood = m; quiet = 0; if (mode !== 'awake') mode = 'awake'; emit('mood'); },
+    setWorkedOut(b) { workedOut = !!b; emit('mood'); },
     setTiming(t) { Object.assign(timing, t); quiet = 0; if (mode !== 'awake') { mode = 'awake'; } emit('mode'); },
     on(f) { listeners.add(f); return () => listeners.delete(f); },
     status: () => ({
-      showing: cur ? cur.id : baseId(), event: !!cur, queue: queue.map((q) => q.id), mode, mood, quiet,
+      showing: cur ? cur.id : baseId(), event: !!cur, queue: queue.map((q) => q.id), mode, mood, workedOut, quiet,
       toDrowsy: Math.max(0, timing.drowsy - quiet), toAsleep: Math.max(0, timing.asleep - quiet), timing: { ...timing },
     }),
   };

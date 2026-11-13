@@ -31,8 +31,11 @@ struct PetStageConfig: Equatable, Encodable {
     var canvas: String? = nil
     /// At bedtime the pet nods off within seconds instead of minutes.
     var bedtime = false
-    /// "normal" | "tired" | "sad"
+    /// Today's base state: "normal", "rest" (a leave day: 放假) or "bedtime" (the hour before the
+    /// target bedtime: 看月亮). PRD §5.3.
     var mood = "normal"
+    /// A workout is booked today: 呼呼 comes up now and then among the idle moves (PRD §5.3).
+    var workedOut = false
     /// The slow condition of the last 7 days (PRD v0.2 §5.5): "lively" | "normal" | "low".
     /// Only the idle behaviour and the floor's tint change.
     var energy = "normal"
@@ -184,14 +187,32 @@ final class PetStage {
 
     /// 醒来: only for the first open of the day.
     func morning() { run("Pet.morning()") }
-    /// cheer, starry, proud, hop, love, cheerup, confused: plays to the end (proud = 骄傲挺胸, when
-    /// a decoration goes on).
+    /// cheer, starry, proud, hop, love, cheerup, confused, levelup, bigcheer, missyou, hello: plays
+    /// to the end, after the moments asked before it.
     func celebrate(_ id: String) { run("Pet.celebrate('\(id)')") }
+    /// A moment at the expression's own priority (PRD §5.3): nod, mirror, please, photo, hello…;
+    /// a tap or a newer moment may cut it short. `pet`: only for that pet, so it waits while the
+    /// page still shows another one (a new main pet, a pet's page opening). `hold`: 等一下 (wait)
+    /// and 拆礼物 (gift) go on until `endHold`.
+    func react(_ id: String, pet: String? = nil, hold: Bool = false) {
+        var options: [String] = []
+        if let pet { options.append("pet: '\(pet)'") }
+        if hold { options.append("hold: true") }
+        run("Pet.react('\(id)', {\(options.joined(separator: ", "))})")
+    }
+    /// 等一下 has its data, 拆礼物 its box opened: the expression plays on to its end.
+    func endHold(_ id: String) { run("Pet.release('\(id)')") }
+    /// 眼巴巴: the pet eyes the food bubble at `point` (fractions of the pet's page), when it is
+    /// awake and doing nothing else.
+    func beg(toward point: CGPoint) {
+        let x = String(format: "%.4f", point.x), y = String(format: "%.4f", point.y)
+        run("Pet.react('beg', {at: {x: \(x), y: \(y)}})")
+    }
     func play(_ id: String) { run("Pet.play('\(id)')") }
     /// A food bubble reached the pet's mouth.
     func eat() { run("Pet.eat()") }
     /// A food bubble at `point` (fractions of the pet's page) was tapped: the pet watches its
-    /// crumbs come, chews, and swallows at 1.06 s, then plays `then` (giggle, proud, cheer).
+    /// crumbs come, chews, and swallows at 1.06 s, then plays `then` (yum, proud, levelup, bigcheer).
     func feed(at point: CGPoint, then expression: String) {
         let x = String(format: "%.4f", point.x), y = String(format: "%.4f", point.y)
         run("Pet.feed({x: \(x), y: \(y), then: '\(expression)'})")
@@ -350,6 +371,9 @@ struct PetStageView: UIViewRepresentable {
 struct LivePet: View {
     let config: PetStageConfig
     @State private var owner = UUID()
+    /// Appeared and not gone. A screen under a full-screen cover stays so (the first open over
+    /// home): it takes the pet back when the cover lets go of it.
+    @State private var shown = false
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
@@ -371,8 +395,11 @@ struct LivePet: View {
             }
             .animation(.easeOut(duration: 0.2), value: stage.hasDrawn)
         }
-        .onAppear { stage.claim(owner, config: config) }
-        .onDisappear { stage.release(owner) }
+        .onAppear { shown = true; stage.claim(owner, config: config) }
+        .onDisappear { shown = false; stage.release(owner) }
+        .onChange(of: stage.owner) { _, now in
+            if now == nil, shown, scenePhase == .active { stage.claim(owner, config: config) }
+        }
         .onChange(of: scenePhase) { _, phase in
             stage.setAppActive(phase == .active)
             if phase == .active, stage.owner == nil { stage.claim(owner, config: config) }

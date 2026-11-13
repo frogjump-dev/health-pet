@@ -133,7 +133,11 @@ struct SettingsScreen: View {
             }
         }
         .onChange(of: model.dataMode) { Task { await model.refresh() } }
-        .onChange(of: model.sleepSchedule) { Task { await model.refresh() } }
+        .onChange(of: model.sleepSchedule) {
+            Task { await model.refresh() }
+            // 点点头 (PRD §5.3): the pet nods when it is next on screen
+            PetStage.shared.react("nod")
+        }
     }
 
     /// Weekend targets start as a copy of the weekday ones; off = the same every night.

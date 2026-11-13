@@ -182,6 +182,8 @@ struct PetDetailScreen: View {
     @Environment(\.colorScheme) private var scheme
     /// 「Toast is wearing the Party hat」, after the welcome gift was put on from home (D13).
     @State private var wornLine: String?
+    /// The pet said hello when its page opened (not again when coming back from Dress up).
+    @State private var greeted = false
 
     var body: some View {
         let pet = Pet3D.with(id: petID) ?? .toast
@@ -219,7 +221,10 @@ struct PetDetailScreen: View {
             Spacer(minLength: 20)
             if record.isUnlocked {
                 VStack(spacing: 10) {
-                    Button(isMain ? "Main pet" : "Set as main") { model.mainPetID = pet.rosterID }
+                    Button(isMain ? "Main pet" : "Set as main") {
+                        model.mainPetID = pet.rosterID
+                        PetStage.shared.react("nod", pet: pet.id)   // 点点头 (PRD §5.3)
+                    }
                         .buttonStyle(PillButtonStyle(primary: true))
                         .disabled(isMain)
                         .opacity(isMain ? 0.55 : 1)
@@ -254,10 +259,17 @@ struct PetDetailScreen: View {
         .padding(.bottom, 12)
         .background(Jade.canvas.ignoresSafeArea())
         .toolbar(.hidden, for: .navigationBar)
-        .task { await sayWorn(pet) }
+        .task {
+            // 打招呼 when a pet's page opens (PRD §5.3); 照一照 instead when it just put on the welcome gift
+            if !greeted, model.dressUp.justWorn?.pet != pet.id, model.record(pet).isUnlocked {
+                PetStage.shared.react("hello", pet: pet.id)
+            }
+            greeted = true
+            await sayWorn(pet)
+        }
     }
 
-    /// The welcome gift went on from home: say so once and puff up proudly.
+    /// The welcome gift went on from home: say so once and show it off (照一照).
     private func sayWorn(_ pet: Pet3D) async {
         guard let worn = model.dressUp.justWorn, worn.pet == pet.id, let decor = Decor.with(id: worn.item) else { return }
         model.dressUp.justWorn = nil
@@ -265,7 +277,7 @@ struct PetDetailScreen: View {
         withAnimation(.spring(duration: 0.3)) { wornLine = text }
         AccessibilityNotification.Announcement(text).post()
         try? await Task.sleep(for: .seconds(0.6))
-        PetStage.shared.celebrate("proud")
+        PetStage.shared.react("mirror", pet: pet.id)
         try? await Task.sleep(for: .seconds(2.2))
         withAnimation(.easeOut(duration: 0.25)) { wornLine = nil }
     }

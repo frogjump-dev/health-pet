@@ -25,6 +25,32 @@ extension AppModel {
         return Double(done) / Double(rules.workoutsPerWeek + rules.onTimeNightsPerWeek)
     }
 
+    /// Monthly achievements so far (3 自律周 in a block of 4 weeks), this week's included once it counts.
+    var monthlyAchievements: Int {
+        ledger.filter { if case .monthlyAchievement = $0.kind { true } else { false } }.count
+    }
+
+    /// The big round numbers reached so far, as Memories lists them, each celebrated once with
+    /// 大庆祝 (PRD §8.4): 30 and 100 on-time nights, 100 workouts.
+    var milestonesReached: [String] {
+        ledger.compactMap { entry in
+            switch entry.kind {
+            case .onTimeNights(let n): "nights\(n)"
+            case .workouts(let n): "workouts\(n)"
+            default: nil
+            }
+        }
+    }
+
+    /// What the pet says with a milestone's 大庆祝.
+    static func milestoneLine(_ milestone: String) -> String {
+        switch milestone {
+        case let m where m.hasPrefix("nights"): "\(m.dropFirst(6)) on-time nights!"
+        case let m where m.hasPrefix("workouts"): "\(m.dropFirst(8)) workouts!"
+        default: "Look at us!"
+        }
+    }
+
     // MARK: - Ledger (Memories)
 
     var ledger: [LedgerEntry] {

@@ -40,6 +40,8 @@ struct HealthPet3DApp: App {
                         model.dressUp.collectDailyPoint()
                         Task { await model.refresh() }
                     }
+                    // back after a few hours the same day: the pet says hello (PRD §5.3)
+                    if phase == .background { home.markAway() }
                 }
                 .onChange(of: model.sleepSchedule) { rescheduleNotifications() }
                 .onChange(of: model.mainPetID) { rescheduleNotifications() }

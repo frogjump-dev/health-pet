@@ -62,6 +62,12 @@ final class HomeState {
     private var levelsAtMorning: [String: Int]
     /// Whole days between the previous open and today's first one (0 = opened yesterday too… 1 = skipped a day).
     private(set) var daysAway = 0
+    /// When the app last went to the background, for 打招呼 after a few hours away the same day.
+    private var awaySince: Date?
+    /// Monthly achievements already celebrated (nil = not counted yet: the first count is only remembered).
+    private var celebratedMonths: Int?
+    /// Big moments already celebrated with 大庆祝 (30 on-time nights…); nil = not looked yet.
+    private var milestones: Set<String>?
 
     private let defaults: UserDefaults
     private let calendar = Calendar.current
@@ -80,6 +86,9 @@ final class HomeState {
         static let welcomedPets = "3d.welcomedPets"
         static let celebratedWeek = "3d.celebratedWeek"
         static let levelsAtMorning = "3d.levelsAtMorning"
+        static let awaySince = "3d.awaySince"
+        static let celebratedMonths = "3d.celebratedMonths"
+        static let milestones = "3d.milestones"
         static func once(_ name: String) -> String { "3d.once.\(name)" }
     }
 
@@ -98,6 +107,9 @@ final class HomeState {
         welcomedPets = Set(defaults.stringArray(forKey: Keys.welcomedPets) ?? [])
         celebratedWeek = defaults.object(forKey: Keys.celebratedWeek) as? Date
         levelsAtMorning = defaults.dictionary(forKey: Keys.levelsAtMorning) as? [String: Int] ?? [:]
+        awaySince = defaults.object(forKey: Keys.awaySince) as? Date
+        celebratedMonths = defaults.object(forKey: Keys.celebratedMonths) as? Int
+        milestones = defaults.stringArray(forKey: Keys.milestones).map(Set.init)
     }
 
     private var today: Date { calendar.startOfDay(for: Date()) }
@@ -114,7 +126,27 @@ final class HomeState {
         }
         wokeUpOn = today
         defaults.set(today, forKey: Keys.wokeUpOn)
+        // the morning has its own greeting (醒来), not 打招呼 as well
+        setAway(nil)
         return true
+    }
+
+    // MARK: - Away for a while
+
+    /// The app went to the background.
+    func markAway() { setAway(Date()) }
+
+    /// True once when the app comes back after `hours` or more away (PRD §5.3 打招呼; the first
+    /// open of a day is the morning's instead).
+    func takeHelloAfterAway(hours: Double = 3) -> Bool {
+        guard let since = awaySince else { return false }
+        setAway(nil)
+        return Date().timeIntervalSince(since) >= hours * 3600
+    }
+
+    private func setAway(_ date: Date?) {
+        awaySince = date
+        defaults.set(date, forKey: Keys.awaySince)
     }
 
     /// True the first time `name` is asked today (one puzzled look, one "almost there" a day).
@@ -164,6 +196,30 @@ final class HomeState {
         celebratedWeek = weekStart
         defaults.set(weekStart, forKey: Keys.celebratedWeek)
         return true
+    }
+
+    /// True once for each new monthly achievement (大庆祝). The first time it only remembers how many
+    /// there are, so an update or a reinstall doesn't celebrate old ones.
+    func takeNewMonth(count: Int) -> Bool {
+        defer {
+            celebratedMonths = max(count, celebratedMonths ?? 0)
+            defaults.set(celebratedMonths, forKey: Keys.celebratedMonths)
+        }
+        guard let celebratedMonths else { return false }
+        return count > celebratedMonths
+    }
+
+    /// The milestones in `reached` not celebrated yet (they count as celebrated now). The first time
+    /// it only remembers those already reached.
+    func takeMilestones(_ reached: [String]) -> [String] {
+        let known = milestones
+        let all = (known ?? []).union(reached)
+        if all != known {
+            milestones = all
+            defaults.set(Array(all), forKey: Keys.milestones)
+        }
+        guard let known else { return [] }
+        return reached.filter { !known.contains($0) }
     }
 
     func replayMorning() {
