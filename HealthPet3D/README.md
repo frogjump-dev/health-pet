@@ -8,7 +8,7 @@
 1. 终端进入仓库：`cd ~/Developer/health-pet`
 2. 生成 Xcode 工程：`xcodegen generate`（XcodeGen 在 `~/Developer/tools/xcodegen-dl/xcodegen/bin/xcodegen`）
 3. 打开 `HealthPet.xcodeproj`，左上角的 scheme 选 **HealthPet3D**，设备选 **iPhone 18 Pro**（iOS 27.0）
-4. 按 ⌘R 运行。模拟器里默认用 Demo 数据；右上角「…」→ Settings → Test build 可以切换数据和 Demo 的四种日子
+4. 按 ⌘R 运行。模拟器里默认用 Demo 数据；右上角「…」→ Settings → Test build → Data 可以换成 Real data（Apple 健康 + 连上的 Whoop，见「用真实 Whoop 数据测试」一节）
 5. 测完马上退出：模拟器 ⌘Q，Xcode 里按 ⌘. 停止（Mac 会发热）
 
 命令行构建（不开 Xcode）：
@@ -281,6 +281,32 @@ PRD v0.3 §10.3「已定、还没做」分四批做，这是第 1 批「只读�
   Settings → Test build →「Grow the food back」可以把今天吃过的还回来（Live 数据下已经加上的宠物经验不退）。
 - 状态区：入睡时间（Apple 健康的第一段睡眠开始，或 Whoop 的睡眠开始）；Apple Watch 用户是昨晚睡眠时长，Whoop 用户是 Whoop 恢复分。都是原值，App 不估算。
 - 规则在 `Packages/PetCore` 里，有单元测试（Linux 上也能跑：`cd Packages/PetCore && swift test`）。
+
+## 用真实 Whoop 数据测试（2026-11-13）
+
+Whoop 的数据不经过手机：App 匿名登录 Supabase → `whoop-connect` 给出 Whoop 登录网址 → 用户在弹出的网页里登录、允许 →
+Whoop 跳回 `whoop-callback`（存好加密的 token，补拉 30 天）→ 网页跳回 `ovenpals://whoop/connected` → App 用 `snapshots` 读数据。
+所以**模拟器也能连真实 Whoop**，不用等 TestFlight。
+
+一次性准备：
+
+1. developer-dashboard.whoop.com 用自己的 Whoop 账号登录，建 Team，再建 App：
+   - Redirect URL：`https://fakurcgffasfrdupnubt.supabase.co/functions/v1/whoop-callback`
+   - Scopes：read:recovery、read:sleep、read:cycles、read:profile（列表里有 offline 也勾上）
+   - Webhook URL（可以以后再填）：`https://fakurcgffasfrdupnubt.supabase.co/functions/v1/whoop-webhook`，版本选 v2
+   - 没审核的 App 最多 10 个 Whoop 会员能连，自己测试够用。
+2. 把 Client ID / Client Secret 填进 `backend/supabase/.env.whoop`（不进 git），然后在 `backend/` 里：
+   `~/Developer/tools/supabase secrets set --env-file supabase/.env.whoop --project-ref fakurcgffasfrdupnubt`，
+   再 `~/Developer/tools/supabase functions deploy --project-ref fakurcgffasfrdupnubt`（5 个函数一起部署）。
+3. `Config/Secrets.xcconfig`（照 `Config/Secrets.example.xcconfig` 复制，不进 git）里要有项目 ref `fakurcgffasfrdupnubt` 和 anon key（Supabase → Project Settings → API Keys，或 `supabase projects api-keys`），否则 Settings 里 Whoop 显示「Not in this build」。改完要 `xcodegen generate`。
+
+测试：⌘R 运行 → 「…」→ Settings → Test build → Data 选 **Real data** → 往上翻到 Whoop →「Connect Whoop」→ 登录、允许 → 回到 App 显示 Connected。
+
+- 模拟器里没有 Apple 健康数据，所以只看得到 Whoop 的部分：入睡 / 醒来时间、Whoop 恢复条、strain 气泡、准时夜，
+  和 Whoop 专属的三只（蜂蜜罐、热牛奶、能量棒）。运动和步数走 Apple 健康，要真机。
+- Whoop 刚开始戴的前几天还在校准，恢复分不给，恢复条会空着。
+- 数据超过 30 分钟没更新时，打开 App 会让服务器重新拉最近 3 天；Settings → Test build →「Refresh now」也可以。
+- 报错「The Ovenpals server answered with an error (500)」多半是 Supabase 里的 Whoop 密钥没设好。
 
 ## 还没做
 

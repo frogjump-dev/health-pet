@@ -109,7 +109,8 @@ struct SettingsScreen: View {
             SettingsGroup("Test build") {
                 SettingsRow("Data") {
                     Picker("Data", selection: $model.dataMode) {
-                        Text("Apple Health").tag(DataMode.live)
+                        // Live = Apple Health plus Whoop when it is connected
+                        Text("Real data").tag(DataMode.live)
                         Text("Demo").tag(DataMode.demo)
                     }
                     .pickerStyle(.menu)
