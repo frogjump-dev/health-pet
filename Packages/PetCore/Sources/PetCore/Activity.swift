@@ -8,22 +8,22 @@ public enum Activity: String, Codable, Sendable, CaseIterable, Identifiable {
     case running, strength, hiit, cycling, swimming, hiking
     case yoga, pilates, dance, ballSports, climbing, other
     /// Whoop only (decided 2026-11-02): a day whose strain fits that morning's recovery,
-    /// a night that met Whoop's sleep need, and (Protein Bar, changed 2026-11-08 from a
-    /// high-strain day) two balanced days in a row.
-    case recoveryMatch, sleepNeedMet, balancedStreak
+    /// a night that met Whoop's sleep need, and (Protein Bar, PRD v0.3 §5.1, decided
+    /// 2026-11-10) a red day taken easy: recovery under 34% and strain 10 or less.
+    case recoveryMatch, sleepNeedMet, redDayRest
 
     public var id: String { rawValue }
 
     /// Needs data only a Whoop band provides.
     public var isWhoopOnly: Bool {
-        self == .recoveryMatch || self == .sleepNeedMet || self == .balancedStreak
+        self == .recoveryMatch || self == .sleepNeedMet || self == .redDayRest
     }
 
     /// A sport or a 10k-step day: what counts as one workout, and what a share card's
     /// identity title is named after. Sleep, waking, mindfulness and the Whoop pets are habits.
     public var isWorkout: Bool {
         switch self {
-        case .onTimeSleep, .earlyRise, .mindfulness, .recoveryMatch, .sleepNeedMet, .balancedStreak: false
+        case .onTimeSleep, .earlyRise, .mindfulness, .recoveryMatch, .sleepNeedMet, .redDayRest: false
         default: true
         }
     }
@@ -49,7 +49,7 @@ public enum Activity: String, Codable, Sendable, CaseIterable, Identifiable {
         case .other: "All-rounder"
         case .recoveryMatch: "Balanced day"
         case .sleepNeedMet: "Sleep need met"
-        case .balancedStreak: "Two balanced days"
+        case .redDayRest: "Red-day rest"
         }
     }
 
@@ -67,7 +67,7 @@ public enum Activity: String, Codable, Sendable, CaseIterable, Identifiable {
         case .climbing: ("climb", "climbs")
         case .recoveryMatch: ("balanced day", "balanced days")
         case .sleepNeedMet: ("full night", "full nights")
-        case .balancedStreak: ("balanced pair", "balanced pairs")
+        case .redDayRest: ("red-day rest", "red-day rests")
         default: ("session", "sessions")
         }
         return "\(count) \(count == 1 ? names.one : names.many)"
@@ -83,7 +83,7 @@ public enum Activity: String, Codable, Sendable, CaseIterable, Identifiable {
         case .other: "A 20-min workout of any other kind"
         case .recoveryMatch: "Whoop: train to match your recovery"
         case .sleepNeedMet: "Whoop: get 85%+ of your sleep need"
-        case .balancedStreak: "Whoop: match your recovery two days running"
+        case .redDayRest: "Whoop: take it easy on a red day (strain 10 or less)"
         default: "One 20-min \(title.lowercased()) workout"
         }
     }
@@ -147,6 +147,10 @@ public struct ActivityTracker: Sendable {
     public var weekendWakeTarget: WakeTime?
     /// Whoop sleep performance (0-100) that counts as a full night.
     public var minSleepPerformance: Double = 85
+    /// Protein Bar: Whoop recovery below this is a red day (Whoop's own red band)…
+    public var redRecoveryBelow: Double = 34
+    /// …and a day strain up to this one is taking it easy.
+    public var redDayMaxStrain: Double = 10
 
     public init(discipline: DisciplineTracker, wakeTarget: WakeTime, weekendWakeTarget: WakeTime? = nil) {
         self.discipline = discipline
@@ -168,6 +172,14 @@ public struct ActivityTracker: Sendable {
         case 34..<67: strain >= 8 && strain <= 14
         default: strain < 10
         }
+    }
+
+    /// Protein Bar (PRD v0.3 §5.1): a red day (recovery under 34%) whose strain stayed at 10 or
+    /// less. Today it means "resting so far" (the pet takes the day off with you, 放假); the day
+    /// only counts once it is over. No recovery yet (Whoop still calibrating) is never a red day.
+    public func isRestingOnRedDay(_ day: HealthSnapshot) -> Bool {
+        guard let recovery = day.vendorRecovery, recovery < redRecoveryBelow else { return false }
+        return (day.strain ?? 0) <= redDayMaxStrain
     }
 
     /// `dayIsOver` = false for today: its strain is still rising, so whether it fit the
@@ -192,6 +204,8 @@ public struct ActivityTracker: Sendable {
            strainMatchesRecovery(recovery: recovery, strain: strain) {
             result.insert(.recoveryMatch)
         }
+        // Protein Bar; a rested red day (strain under 10) is a balanced day for Honey as well
+        if dayIsOver, day.strain != nil, isRestingOnRedDay(day) { result.insert(.redDayRest) }
 
         for workout in day.allWorkouts {
             let activity = Activity(workoutName: workout.name)
@@ -203,29 +217,11 @@ public struct ActivityTracker: Sendable {
 
     /// Every day's activities, keyed by the start of the day. Days with none are left out.
     /// Days from `today` on are treated as still going (see `activities(on:dayIsOver:)`).
-    /// Two-day streaks (Protein Bar) span days, so they are added over the whole history
-    /// with `withBalancedStreaks(_:)`, never here.
     public func log(_ snapshots: [HealthSnapshot], today: Date? = nil) -> [Date: Set<Activity>] {
         snapshots.reduce(into: [:]) { log, day in
             let done = activities(on: day, dayIsOver: today.map { day.day < $0 } ?? true)
             if !done.isEmpty { log[day.day] = done }
         }
-    }
-
-    /// Protein Bar (decided 2026-11-08): two days in a row whose strain fit the recovery count
-    /// once. In a run of balanced days every second day completes a pair (days 2, 4, 6 …).
-    /// Pass the whole history (not a 30-day window), so a long run is always paired the same way.
-    public func withBalancedStreaks(_ log: [Date: Set<Activity>]) -> [Date: Set<Activity>] {
-        var result = log
-        var run = 0
-        var previous: Date?
-        for day in log.filter({ $0.value.contains(.recoveryMatch) }).keys.sorted() {
-            let follows = previous.flatMap { discipline.calendar.date(byAdding: .day, value: 1, to: $0) } == day
-            run = follows ? run + 1 : 1
-            previous = day
-            if run % 2 == 0 { result[day, default: []].insert(.balancedStreak) }
-        }
-        return result
     }
 }
 

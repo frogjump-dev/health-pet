@@ -81,7 +81,7 @@ struct RosterPet: Identifiable, Equatable {
         // Whoop only, no MBTI.
         RosterPet(id: "honey", name: "Honey", mbti: "", family: .supply, activity: .recoveryMatch),
         RosterPet(id: "warmmilk", name: "Warm Milk", mbti: "", family: .supply, activity: .sleepNeedMet),
-        RosterPet(id: "proteinbar", name: "Protein Bar", mbti: "", family: .supply, activity: .balancedStreak),
+        RosterPet(id: "proteinbar", name: "Protein Bar", mbti: "", family: .supply, activity: .redDayRest),
     ]
 
     static func pet(for activity: Activity) -> RosterPet {

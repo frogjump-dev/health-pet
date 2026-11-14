@@ -51,7 +51,7 @@ extension Activity {
         case .onTimeSleep: "Sleeper"
         case .earlyRise: "Early Riser"
         case .mindfulness: "Meditator"
-        case .recoveryMatch, .sleepNeedMet, .balancedStreak: "Balancer"
+        case .recoveryMatch, .sleepNeedMet, .redDayRest: "Balancer"
         }
     }
 }

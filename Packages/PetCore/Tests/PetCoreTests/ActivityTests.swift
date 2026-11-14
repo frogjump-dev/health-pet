@@ -88,21 +88,30 @@ final class ActivityTests: XCTestCase {
         XCTAssertFalse(tracker.activities(on: short).contains(.sleepNeedMet))
     }
 
-    func testAHardDayAloneIsNoLongerAProteinBar() {
-        let hard = HealthSnapshot(day: day(0), source: .whoop, vendorRecovery: 20, strain: 18)
-        XCTAssertFalse(tracker.activities(on: hard).contains(.balancedStreak))
+    func testProteinBarIsARestedRedDay() {
+        // PRD v0.3 §5.1: recovery under 34% and strain 10 or less
+        let rested = HealthSnapshot(day: day(0), source: .whoop, vendorRecovery: 20, strain: 10)
+        XCTAssertTrue(tracker.activities(on: rested).contains(.redDayRest))
+        let hard = HealthSnapshot(day: day(0), source: .whoop, vendorRecovery: 20, strain: 10.1)
+        XCTAssertFalse(tracker.activities(on: hard).contains(.redDayRest))
+        let yellow = HealthSnapshot(day: day(0), source: .whoop, vendorRecovery: 34, strain: 4)
+        XCTAssertFalse(tracker.activities(on: yellow).contains(.redDayRest))
+        // Whoop still calibrating: no recovery, so never a red day
+        let calibrating = HealthSnapshot(day: day(0), source: .whoop, strain: 3)
+        XCTAssertFalse(tracker.activities(on: calibrating).contains(.redDayRest))
+        // no strain at all: nothing to judge the day by
+        let noStrain = HealthSnapshot(day: day(0), source: .whoop, vendorRecovery: 20)
+        XCTAssertFalse(tracker.activities(on: noStrain).contains(.redDayRest))
+        XCTAssertNil(tracker.log([], today: day(0))[day(0)])
     }
 
-    func testTwoBalancedDaysInARowCountOnce() {
-        // a run of 5 balanced days (Mon-Fri), a gap, then 1 more (Sun): pairs end on Tue and Thu
-        var log: [Date: Set<Activity>] = [:]
-        for offset in [0, 1, 2, 3, 4, 6] { log[day(offset)] = [.recoveryMatch] }
-        log[day(5)] = [.running]
-        let streaks = tracker.withBalancedStreaks(log)
-        let pairs = streaks.filter { $0.value.contains(.balancedStreak) }.keys.sorted()
-        XCTAssertEqual(pairs, [day(1), day(3)])
-        XCTAssertEqual(streaks[day(5)], [.running])
-        XCTAssertNil(tracker.log([], today: day(0))[day(0)])
+    func testRestingOnARedDaySoFar() {
+        // today, for the pet's 放假: red and easy so far, even before any strain is in
+        XCTAssertTrue(tracker.isRestingOnRedDay(HealthSnapshot(day: day(0), source: .whoop, vendorRecovery: 25)))
+        XCTAssertTrue(tracker.isRestingOnRedDay(HealthSnapshot(day: day(0), source: .whoop, vendorRecovery: 25, strain: 6)))
+        XCTAssertFalse(tracker.isRestingOnRedDay(HealthSnapshot(day: day(0), source: .whoop, vendorRecovery: 25, strain: 11)))
+        XCTAssertFalse(tracker.isRestingOnRedDay(HealthSnapshot(day: day(0), source: .whoop, vendorRecovery: 70, strain: 2)))
+        XCTAssertFalse(tracker.isRestingOnRedDay(HealthSnapshot(day: day(0), source: .healthKit, steps: 900)))
     }
 
     func testWeekendWakeTarget() {
@@ -127,11 +136,12 @@ final class ActivityTests: XCTestCase {
     func testRecoveryMatchWaitsForTheDayToEnd() {
         let red = HealthSnapshot(day: day(2), source: .whoop, vendorRecovery: 20, strain: 4)
         XCTAssertNil(tracker.log([red], today: day(2))[day(2)])
-        XCTAssertEqual(tracker.log([red], today: day(3))[day(2)], [.recoveryMatch])
+        // a rested red day: Honey's balanced day and Protein Bar's red-day rest
+        XCTAssertEqual(tracker.log([red], today: day(3))[day(2)], [.recoveryMatch, .redDayRest])
     }
 
     func testWhoopActivitiesAreFlagged() {
-        XCTAssertEqual(Activity.allCases.filter(\.isWhoopOnly), [.recoveryMatch, .sleepNeedMet, .balancedStreak])
+        XCTAssertEqual(Activity.allCases.filter(\.isWhoopOnly), [.recoveryMatch, .sleepNeedMet, .redDayRest])
         XCTAssertFalse(Activity.allCases.contains { $0.isWhoopOnly && $0.isWorkout })
         XCTAssertFalse(Activity.onTimeSleep.isWorkout)
         XCTAssertTrue(Activity.walking.isWorkout)

@@ -49,8 +49,7 @@ final class AppModel {
     private(set) var onTimeStreak = 0
     /// Each activity's sessions, experience and unlock day; one entry per activity.
     private(set) var activityProgress: [Activity: ActivityProgress] = [:]
-    /// Every day's activities so far (live: everything ever recorded; demo: the generated days),
-    /// with Protein Bar's two-day streaks added.
+    /// Every day's activities so far (live: everything ever recorded; demo: the generated days).
     private(set) var activityLog: [Date: Set<Activity>] = [:]
     /// Starts of the finished weeks that counted as 自律周 (live: kept forever).
     private(set) var disciplinedWeekStarts: Set<Date> = []
@@ -355,11 +354,9 @@ final class AppModel {
         let (allLog, allWeeks) = dataMode == .live
             ? (store.activityLog.merging(log) { $0.union($1) }, store.disciplinedWeeks.union(finishedWeeks))
             : (log, Set(finishedWeeks))
-        // Protein Bar's two-day streaks are paired over the whole history, never stored.
-        let fullLog = activities.withBalancedStreaks(allLog)
-        activityLog = fullLog
+        activityLog = allLog
         disciplinedWeekStarts = allWeeks
-        activityProgress = ActivityProgress.all(log: fullLog, disciplinedWeeks: allWeeks, weekStart: tracker.weekStart(for:))
+        activityProgress = ActivityProgress.all(log: allLog, disciplinedWeeks: allWeeks, weekStart: tracker.weekStart(for:))
 
         if recordMemories {
             store.addMemories(memoryDetector.newMemories(today: todaySnapshot, history: history,

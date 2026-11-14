@@ -164,7 +164,7 @@ final class PRDv02Tests: XCTestCase {
     }
 
     func testIdentityTitle() {
-        let p = progress([(.running, 120), (.yoga, 15), (.onTimeSleep, 400), (.balancedStreak, 300)])
+        let p = progress([(.running, 120), (.yoga, 15), (.onTimeSleep, 400), (.redDayRest, 300)])
         XCTAssertEqual(ShareIdentity.title(progress: p, mainActivity: nil, onTimeNightsThisWeek: 5), "Early-to-bed Runner")
         XCTAssertEqual(ShareIdentity.title(progress: p, mainActivity: nil, onTimeNightsThisWeek: 4), "Runner",
                        "the qualifier needs 5 on-time nights")
