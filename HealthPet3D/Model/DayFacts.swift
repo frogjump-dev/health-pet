@@ -88,11 +88,15 @@ extension AppModel {
     }
 
     /// Today's base state for the pet (PRD §5.3): "bedtime" in the hour before the target bedtime
-    /// (看月亮), "rest" on a leave day (放假), otherwise "normal".
+    /// (看月亮), "rest" (放假) on a leave day or while a Whoop red day is being taken easy
+    /// (Protein Bar's rule: recovery under 34%, strain 10 or less so far), otherwise "normal".
     func petMood(at date: Date = Date()) -> String {
         if sleepSchedule.isHourBeforeBed(at: date) { return "bedtime" }
-        return lastNightIsLeave ? "rest" : "normal"
+        return lastNightIsLeave || restingOnRedDay ? "rest" : "normal"
     }
+
+    /// Today is a Whoop red day and the strain is still 10 or less: the pet takes the day off too.
+    var restingOnRedDay: Bool { today.map(activityTracker.isRestingOnRedDay) ?? false }
 
     /// Today's booked check-ins: an on-time night and a workout (or a 10k-step day).
     var checkInsToday: Int {

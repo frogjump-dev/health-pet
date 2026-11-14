@@ -153,7 +153,7 @@ extension Activity {
         case .other: "figure.mixed.cardio"
         case .recoveryMatch: "battery.75percent"
         case .sleepNeedMet: "bed.double"
-        case .balancedStreak: "bolt"
+        case .redDayRest: "sofa"
         }
     }
 }

@@ -31,8 +31,8 @@ struct PetStageConfig: Equatable, Encodable {
     var canvas: String? = nil
     /// At bedtime the pet nods off within seconds instead of minutes.
     var bedtime = false
-    /// Today's base state: "normal", "rest" (a leave day: 放假) or "bedtime" (the hour before the
-    /// target bedtime: 看月亮). PRD §5.3.
+    /// Today's base state: "normal", "rest" (放假: a leave day, or a Whoop red day taken easy) or
+    /// "bedtime" (the hour before the target bedtime: 看月亮). PRD §5.3.
     var mood = "normal"
     /// A workout is booked today: 呼呼 comes up now and then among the idle moves (PRD §5.3).
     var workedOut = false

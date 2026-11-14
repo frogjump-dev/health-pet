@@ -238,7 +238,8 @@ struct HomeScreen: View {
     private func stageConfig(pet: Pet3D, box: PetStageConfig.Box) -> PetStageConfig {
         // No mood from the health data (PRD v0.3): how the pet idles follows its energy, and today's
         // base state only the clock and the user's own choices (PRD §5.3): 看月亮 in the hour before
-        // bed, 放假 on a leave day; 呼呼 among the idle moves once a workout is booked.
+        // bed, 放假 on a leave day or a rested Whoop red day; 呼呼 among the idle moves once a
+        // workout is booked.
         // each pet keeps its own outfit; switching the main pet switches what home shows (PRD v0.3 §5.4)
         #if DEBUG
         // simulator: -hp3dMood rest|bedtime shows 放假 / 看月亮 at any time
