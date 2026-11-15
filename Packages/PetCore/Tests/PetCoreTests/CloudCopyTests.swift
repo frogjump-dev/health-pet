@@ -18,8 +18,11 @@ final class CloudCopyTests: XCTestCase {
         XCTAssertEqual(bare.map(\.detail), ["Run", "10k-step day", "Night's sleep", "Whoop strain", "Table tennis"])
         XCTAssertEqual(bare.map(\.id), ["1731456000/workout:Run#1", "1731456000/steps", "1731456000/night",
                                         "1731456000/load", "1731456000/workout:Table tennis#1"])
-        // no digits left in what a line says, and no minutes in an id
-        XCTAssertFalse(bare.contains { $0.detail.contains(where: \.isNumber) })
+        // none of the measured values is left in what a line says ("10k" is the rule, not a count),
+        // and no minutes in an id
+        for value in ["32", "10,240", "22:48", "11.4", "45"] {
+            XCTAssertFalse(bare.contains { $0.detail.contains(value) }, value)
+        }
         XCTAssertFalse(bare.contains { $0.id.range(of: #":\d+"#, options: .regularExpression) != nil })
         // the app's own record stays: the pet, the levels, when and how it was booked
         XCTAssertEqual(bare[0].activity, .running)
