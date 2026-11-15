@@ -126,6 +126,7 @@ final class AppModel {
 
         // Show yesterday's pet straight away; refresh() replaces it with fresh data.
         evaluate(store.cachedSnapshots, now: Date(), recordMemories: false)
+        if !store.cachedSnapshots.isEmpty { recentMode = .live }
 
         if let cloud {
             // the first download after an install, another iPhone, another iCloud account
@@ -273,11 +274,15 @@ final class AppModel {
         }
 
         let merged = SnapshotMerger.merge(collected)
-        recentDays = merged.isEmpty ? recentDays : merged
-        if !merged.isEmpty {
-            if dataMode == .live { store.cache(merged) }
-            evaluate(merged, now: now, recordMemories: true)
-        }
+        // A fetch that brings nothing (offline) keeps the days on screen, but never the other
+        // mode's: after switching Demo → Real data the demo days go even if nothing came in
+        // (Real data then falls back to the days saved on this phone).
+        let fallback = recentMode == dataMode ? recentDays : (dataMode == .live ? store.cachedSnapshots : [])
+        let days = merged.isEmpty ? fallback : merged
+        recentDays = days
+        recentMode = dataMode
+        if dataMode == .live && !merged.isEmpty { store.cache(merged) }
+        evaluate(days, now: now, recordMemories: !merged.isEmpty)
         // Only complain when nothing worked; a single failing source just falls back to the others.
         errorMessage = merged.isEmpty ? failures.first?.localizedDescription : nil
     }
@@ -292,6 +297,8 @@ final class AppModel {
 
     /// The days last evaluated (up to 30), so a leave day can be applied without fetching again.
     @ObservationIgnored private(set) var recentDays: [HealthSnapshot] = []
+    /// Which mode `recentDays` came from (nil = none yet).
+    @ObservationIgnored private var recentMode: DataMode?
     /// `recentDays` as they count: with the nights the user fixed (「手表记错了」).
     @ObservationIgnored private(set) var countedDays: [HealthSnapshot] = []
 
@@ -299,15 +306,18 @@ final class AppModel {
         if recentDays.isEmpty { recentDays = raw }
         // 「手表记错了」: a night the user fixed counts with the time they gave (PRD v0.3 §4.2)
         let fixes = store.sleepFixes
-        let snapshots = fixes.isEmpty ? raw : raw.map { day in
+        var snapshots = fixes.isEmpty ? raw : raw.map { day in
             guard let onset = fixes[day.day] else { return day }
             var fixed = day
             fixed.sleepOnset = onset
             return fixed
         }
-        countedDays = snapshots
         let todayStart = Calendar.current.startOfDay(for: now)
-        guard let todaySnapshot = snapshots.first(where: { $0.day == todayStart }) else { return }
+        // No data for today yet (a Whoop-only user before last night is scored, a first launch)
+        // is still today, an empty one: stopping here would leave the last day shown on screen.
+        let todaySnapshot = snapshots.first(where: { $0.day == todayStart }) ?? HealthSnapshot(day: todayStart, source: .combined)
+        if !snapshots.contains(where: { $0.day == todayStart }) { snapshots.append(todaySnapshot) }
+        countedDays = snapshots
         let history = snapshots.filter { $0.day < todayStart }
 
         today = todaySnapshot
