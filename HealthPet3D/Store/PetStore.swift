@@ -4,8 +4,10 @@ import PetCore
 
 /// Everything about the pet that lives on this phone: adoption day, memories, finished 自律周,
 /// the activity log, leave days, and the last health snapshots (so the pet shows up instantly, offline too).
-/// Backed by UserDefaults (the App Group's, see `AppGroup`). Everything but the snapshot cache is
-/// also kept in iCloud's key-value store, so a reinstall or a new iPhone gets it back (PRD v0.3 §9).
+/// Backed by UserDefaults (the App Group's, see `AppGroup`). The app's own records (adoption day,
+/// memories, weeks, which days counted for which activity, leave days) are also kept in iCloud's
+/// key-value store, so a reinstall or a new iPhone gets them back (PRD v0.3 §9). Health values
+/// never go there (§10.3 #19, App Review 5.1.3): not the snapshot cache, not the fixed sleep times.
 @MainActor
 @Observable
 final class PetStore {
@@ -23,6 +25,7 @@ final class PetStore {
     private(set) var leaveDays: Set<Date>
     /// 「手表记错了」 (PRD v0.3 §4.2): when the user says they really fell asleep, by the morning
     /// the night ended on. It only decides whether that night was on time; it is not a ledger line.
+    /// A time of falling asleep is a health value, so it stays on this phone (no iCloud copy).
     private(set) var sleepFixes: [Date: Date]
 
     private let defaults: UserDefaults
@@ -39,8 +42,9 @@ final class PetStore {
         static let sleepFixes = "sleepFixes"
     }
 
-    /// What goes to iCloud: everything that can't be read from Apple Health again.
-    private static let backedUp = [Keys.adoptedOn, Keys.memories, Keys.disciplinedWeeks, Keys.activityLog, Keys.leaveDays, Keys.sleepFixes]
+    /// What goes to iCloud: the app's own records that can't be read from Apple Health again.
+    /// No health values (PRD v0.3 §10.3 #19): `sleepFixes` and the snapshot cache stay on the phone.
+    private static let backedUp = [Keys.adoptedOn, Keys.memories, Keys.disciplinedWeeks, Keys.activityLog, Keys.leaveDays]
 
     init(defaults: UserDefaults = AppGroup.defaults, cloud: NSUbiquitousKeyValueStore? = nil) {
         self.defaults = defaults
@@ -134,8 +138,8 @@ final class PetStore {
     // MARK: - iCloud
 
     /// Takes in what iCloud holds that this phone doesn't (after a reinstall, or from another
-    /// iPhone): the earlier adoption day, and every week, pet day, leave night, fixed night and memory
-    /// either side has. Nothing is ever taken away. Returns whether anything changed here.
+    /// iPhone): the earlier adoption day, and every week, pet day, leave night and memory either
+    /// side has. Nothing is ever taken away. Returns whether anything changed here.
     @discardableResult
     func mergeFromCloud() -> Bool {
         guard let cloud else { return false }
@@ -176,14 +180,6 @@ final class PetStore {
             save(leaveDays, Keys.leaveDays, toCloud: false)
             changed = true
         }
-        if let theirs = Self.decode([Date: Date].self, cloud.data(forKey: Keys.sleepFixes)) {
-            let updated = sleepFixes.merging(theirs) { mine, _ in mine }
-            if updated != sleepFixes {
-                sleepFixes = updated
-                save(updated, Keys.sleepFixes, toCloud: false)
-                changed = true
-            }
-        }
         return changed
     }
 
@@ -193,6 +189,8 @@ final class PetStore {
         for key in Self.backedUp {
             cloud.set(defaults.object(forKey: key), forKey: key)
         }
+        // older builds backed up the fixed sleep times; take them out of iCloud (the phone keeps them)
+        cloud.removeObject(forKey: Keys.sleepFixes)
     }
 
     // MARK: - Helpers

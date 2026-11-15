@@ -156,6 +156,7 @@ PRD v0.3 §10.3「已定、还没做」分四批做，这是第 1 批「只读�
 - **主页**：Asleep 行不再有空心圈（入账后直接出勾）；底栏中间的 Today 图标换成三根小柱，三个名字都是次要灰。
 - **Pets**：「还能遇见谁」那格只写 Still to meet，不写数量；宠物页的 Dress up 先藏起来。
 - **Settings → About**：版本号、隐私政策、意见反馈。链接在 `project.yml` 的 `PrivacyPolicyURL` / `FeedbackURL`，空着时显示 Soon。
+  2026-11-15 起隐私政策指向 https://claude.ai/artifact/HMXtCuG1i5mbdfY4bTJuRr （测试阶段先放这里，上架前换到自己的域名）；意见反馈还空着。
 
 ### 第 3 批：改名 Ovenpals、分享卡（2026-11-12）
 
@@ -175,7 +176,7 @@ PRD v0.3 §10.3「已定、还没做」分四批做，这是第 1 批「只读�
 - **数据搬进 App Group `group.com.ovenpals.app`**（`Store/AppGroup.swift`）：宠物、入账流水、主宠、入睡目标这些都存在这里，
   以后的主屏小组件读同一份。首次打开、导览、外观、通知开关、时间格式还留在 App 自己的设置里（小组件用不到，截图脚本在启动时设置它们）。
   打包时没有 App Group 能力就退回 App 自己的设置；App 自己的设置里已有的数据会搬一次。
-- **iCloud 键值备份**：领养日、Memories、累计自律周、每只宠物的活动日（= 经验）、请假、「手表记错了」、入账流水，每次保存都同时写进
+- **iCloud 键值备份**（2026-11-15 起不放健康数值，见下面「iCloud 里只有打卡记录」）：领养日、Memories、累计自律周、每只宠物的活动日（= 经验）、请假、入账流水（不带数字），每次保存都同时写进
   iCloud（`PetStore` / `CreditBook` 的 `mergeFromCloud` / `pushToCloud`，`AppModel.syncCloud`）。不需要登录界面；
   重装或换新 iPhone 后，iCloud 的数据一到就合并进来：只加不减，领养日取更早的那天。最近 30 天的健康快照不备份，重新从 Apple 健康读。
   键值存储一共 1 MB，入账流水最多 1,500 行，大约 300 KB。
@@ -281,6 +282,31 @@ PRD v0.3 §10.3「已定、还没做」分四批做，这是第 1 批「只读�
   Settings → Test build →「Grow the food back」可以把今天吃过的还回来（Live 数据下已经加上的宠物经验不退）。
 - 状态区：入睡时间（Apple 健康的第一段睡眠开始，或 Whoop 的睡眠开始）；Apple Watch 用户是昨晚睡眠时长，Whoop 用户是 Whoop 恢复分。都是原值，App 不估算。
 - 规则在 `Packages/PetCore` 里，有单元测试（Linux 上也能跑：`cd Packages/PetCore && swift test`）。
+
+## iCloud 里只有打卡记录（PRD v0.3 §10.3 第 19 项，2026-11-15）
+
+App Review 5.1.3 (ii) 不允许把健康信息存进 iCloud，所以 iCloud 键值存储只放 App 自己的打卡记录，健康数值都留在手机上：
+
+| 键 | iCloud 里有什么 | 只在手机上 |
+|---|---|---|
+| `adoptedOn` | 领养第一只宠物的那天 | |
+| `memories` | 里程碑标题（第一个 2 万步日、准时夜连胜、在一起 N 天） | |
+| `disciplinedWeeks` | 哪几周是自律周 | |
+| `activityLog` | 哪天算了哪个活动（= 宠物经验） | |
+| `leaveDays` | 请假的晚上 | |
+| `3d.credits` / `3d.creditsSince` | 入账流水：哪天、哪种食物、喂了哪只、升没升级、什么时候收的、是不是自动收下；运动只留名字（"Run"） | 分钟、步数、入睡时间、strain（"Run 32 min"、"10,240 steps"、"Asleep 22:48"、"Strain 11.4"） |
+| `3d.dressUp` | 装扮的积分日、抽到的装饰、穿法 | |
+| — | | 「手表记错了」改过的入睡时间（`sleepFixes`，以前的版本放进过 iCloud，现在启动时会删掉）、最近 30 天的健康快照 |
+
+- 流水在 iCloud 里的样子：`CreditRecord.bare`（PetCore，有单元测试）。运动的 id 去掉分钟，同一天同名运动按顺序编号（`…/workout:Run#1`）。
+  每次保存和启动时都用这个样子覆盖 iCloud，所以以前写进去的带数字的版本也会被换掉。
+- 重装或换新手机：从 iCloud 回来的流水先只显示名字（"Run"、"10k-step day"、"Night's sleep"、"Whoop strain"）；
+  App 重新读到那几天的数据后（最近 30 天）会把数字和原来的 id 补回去（`CreditBook.refill`），这些食物不会再长一遍。更早的日子就一直只显示名字。
+- 合并时手机上完整的一行永远不会被 iCloud 里不带数字的那行替换。
+
+**给 App Review 的说明（提交审核时粘到 Notes 里）：**
+
+> Ovenpals uses iCloud key-value storage only to back up the app's own progress so it survives a reinstall or a new iPhone: the day the first pet was adopted, milestone titles, which weeks were completed, which days counted for which activity, leave days, the ledger of collected check-ins (kind, day, pet, workout type, level change) and pet outfits. It stores no HealthKit or WHOOP values: no step counts, durations, sleep times, heart rate, HRV, recovery or strain. Those stay on the device and are re-read from Apple Health or WHOOP.
 
 ## 能量棒：Whoop 红灯天好好休息（PRD v0.3 §5.1，2026-11-14）
 
