@@ -67,6 +67,49 @@ public struct CreditRecord: Codable, Sendable, Equatable, Identifiable {
     }
 }
 
+// MARK: - The iCloud copy (PRD v0.3 §10.3 #19, App Review 5.1.3)
+
+extension CreditRecord {
+    /// The lines as iCloud keeps them: the same pet, day, kind, booking time, 「Collected for you」
+    /// and levels, but no minutes, steps, times or strain, neither in the id nor in the detail.
+    public static func bare(_ records: [CreditRecord]) -> [CreditRecord] {
+        zip(records, bareIDs(records.map(\.id))).map { pair in
+            var line = pair.0
+            line.id = pair.1
+            line.detail = pair.0.bareDetail
+            return line
+        }
+    }
+
+    /// A workout's id without its minutes: "1731456000/workout:Run:32" → "1731456000/workout:Run#1",
+    /// the day's second run "#2", in the order given. Other ids carry no value and stay as they are,
+    /// and so do ids that are bare already.
+    public static func bareIDs(_ ids: [String]) -> [String] {
+        var seen: [String: Int] = [:]
+        return ids.map { id in
+            guard id.contains("/workout:"),
+                  let minutes = id.range(of: #":\d+(#\d+)?$"#, options: .regularExpression) else { return id }
+            let base = String(id[..<minutes.lowerBound])
+            let n = seen[base, default: 0] + 1
+            seen[base] = n
+            return "\(base)#\(n)"
+        }
+    }
+
+    /// What the line says without numbers: "Run", "10k-step day", "Night's sleep", "Whoop strain".
+    public var bareDetail: String {
+        switch kind {
+        case .workout: detail.replacingOccurrences(of: #" \d+ min$"#, with: "", options: .regularExpression)
+        case .steps: "10k-step day"
+        case .night: "Night's sleep"
+        case .load: "Whoop strain"
+        }
+    }
+
+    /// A line that came back from iCloud and hasn't got its numbers again yet.
+    public var isBare: Bool { detail == bareDetail }
+}
+
 /// The rules of the pending layer. Pure functions; the app keeps which credits were booked.
 public struct CreditRules: Sendable {
     public var discipline: DisciplineTracker

@@ -325,6 +325,12 @@ final class AppModel {
         // week, the calendar, levels, the ledger) is worked out from the booked days.
         let credits = CreditRules(discipline: tracker)
         let book = creditBook
+        // lines that came back from iCloud without numbers get them again (and aren't offered twice)
+        if book.hasBareLines {
+            book.refill(from: snapshots.flatMap { day in
+                credits.credits(on: day).map { creditRecord($0, in: snapshots, auto: false, at: now) }
+            })
+        }
         let due = credits.due(in: snapshots, booked: book.bookedIDs, now: now, since: book.since)
         if !due.isEmpty {
             book.add(due.map { creditRecord($0, in: snapshots, auto: true, at: credits.autoBookTime(for: $0.day)) })
