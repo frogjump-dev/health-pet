@@ -47,7 +47,8 @@ targets:
         NSHealthUpdateUsageDescription: "Ovenpals does not write to Apple Health."
         NSPhotoLibraryAddUsageDescription: "Save your share cards to Photos."
         # Settings → About opens these once they exist (https:// or mailto:); empty = "Soon".
-        PrivacyPolicyURL: ""
+        # the page lives at a claude.ai link for the test builds; move it to the app's own domain before the store
+        PrivacyPolicyURL: "https://claude.ai/artifact/HMXtCuG1i5mbdfY4bTJuRr"
         FeedbackURL: ""
         # The searchable line at the bottom of share cards: a short link once there is one
         # (e.g. "ovenpals.app"); empty = "iPhone app" under the name (PRD v0.3 §6).

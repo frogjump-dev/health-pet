@@ -156,6 +156,7 @@ PRD v0.3 §10.3「已定、还没做」分四批做，这是第 1 批「只读�
 - **主页**：Asleep 行不再有空心圈（入账后直接出勾）；底栏中间的 Today 图标换成三根小柱，三个名字都是次要灰。
 - **Pets**：「还能遇见谁」那格只写 Still to meet，不写数量；宠物页的 Dress up 先藏起来。
 - **Settings → About**：版本号、隐私政策、意见反馈。链接在 `project.yml` 的 `PrivacyPolicyURL` / `FeedbackURL`，空着时显示 Soon。
+  2026-11-15 起隐私政策指向 https://claude.ai/artifact/HMXtCuG1i5mbdfY4bTJuRr （测试阶段先放这里，上架前换到自己的域名）；意见反馈还空着。
 
 ### 第 3 批：改名 Ovenpals、分享卡（2026-11-12）
 
