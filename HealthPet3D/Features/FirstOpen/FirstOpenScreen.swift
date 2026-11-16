@@ -29,6 +29,8 @@ struct FirstOpenScreen: View {
     }()
     @State private var connecting = false
     @State private var progress = 0.0
+    /// The weekend bedtime's wheel is open.
+    @State private var pickingWeekend = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -138,7 +140,7 @@ struct FirstOpenScreen: View {
                     step = .bedtime
                 }
             } label: {
-                if connecting { ProgressView().tint(Jade.onPrimary) } else { Text("Allow Apple Health") }
+                if connecting { HopDots() } else { Text("Allow Apple Health") }
             }
             .buttonStyle(PillButtonStyle(primary: true))
             .disabled(connecting)
@@ -261,8 +263,9 @@ struct FirstOpenScreen: View {
                 .background(alignment: .bottom) {
                     Ellipse().fill(Jade.accent.opacity(0.16)).frame(width: 190, height: 34).offset(y: 6)
                 }
-            SpeechBubble(text: model.hasSleepData ? "Your first walk or workout grows a snack. Let’s go!" : AppModel.noSleepLine)
-                .padding(.top, 28)
+            PetBubble(text: model.hasSleepData ? "Your first walk or workout grows a snack. Let’s go!" : AppModel.noSleepLine,
+                      toward: .up)
+                .padding(.top, 10)
                 .padding(.horizontal, 12)
             Spacer()
             Button("Let’s go") { finish() }
@@ -275,7 +278,7 @@ struct FirstOpenScreen: View {
     private func toastSays(_ text: String) -> some View {
         HStack(alignment: .center, spacing: 10) {
             PetPicture(pet: .toast).frame(width: 44, height: 44)
-            SpeechBubble(text: text)
+            PetBubble(text: text, toward: .leading)
         }
         .frame(maxWidth: .infinity)
     }
@@ -294,31 +297,36 @@ struct FirstOpenScreen: View {
         return VStack(alignment: .leading, spacing: 0) {
             title("When do you want to be asleep?",
                   "Within 30 minutes after this counts as on time. Five on-time nights a week make the early-nights half of a disciplined week.")
-            Picker("Asleep by", selection: $model.sleepSchedule.bedtimeMinutes) {
-                ForEach(SleepOptions.bedtimes, id: \.self) { minutes in
-                    Text(SleepSchedule.clock(minutes)).scaledFont(22, .semibold).tag(minutes)
-                }
-            }
-            .pickerStyle(.wheel)
-            .frame(maxWidth: .infinity)
-            .padding(.top, 8)
+            // the app's own wheel, right on the page (bubble-settings-v1)
+            TargetWheel(title: "Asleep by", icon: "moon.fill", options: SleepOptions.bedtimes,
+                        minutes: $model.sleepSchedule.bedtimeMinutes)
+                .padding(.vertical, 14)
             Toggle(isOn: weekendsApart) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Different on weekends").scaledFont(15, .bold).foregroundStyle(Jade.ink)
                     Text("Set a later time for Friday and Saturday").scaledFont(12, .medium).foregroundStyle(Jade.ink2)
                 }
             }
-            .tint(Jade.accent)
+            .toggleStyle(.face)
             .card(padding: 16, radius: 20)
             if let weekend = model.sleepSchedule.weekendBedtimeMinutes {
-                Picker("Friday and Saturday", selection: Binding(get: { weekend }, set: { model.sleepSchedule.weekendBedtimeMinutes = $0 })) {
-                    ForEach(SleepOptions.bedtimes, id: \.self) { minutes in
-                        Text(SleepSchedule.clock(minutes)).tag(minutes)
-                    }
+                HStack(spacing: 12) {
+                    Text("Friday and Saturday").scaledFont(15, .bold).foregroundStyle(Jade.ink)
+                    Spacer(minLength: 8)
+                    Button { pickingWeekend = true } label: { TimeChip(minutes: weekend) }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Friday and Saturday, asleep by")
+                        .accessibilityValue(SleepSchedule.clock(weekend))
+                        .accessibilityHint("Opens a time wheel")
                 }
-                .pickerStyle(.menu)
-                .tint(Jade.ink)
-                .frame(maxWidth: .infinity, alignment: .trailing)
+                .card(padding: 16, radius: 20)
+                .padding(.top, 10)
+                .transition(.opacity.combined(with: .move(edge: .top)))
+                .sheet(isPresented: $pickingWeekend) {
+                    TargetWheelSheet(title: "Fri & Sat asleep by", icon: "moon.fill", options: SleepOptions.bedtimes,
+                                     minutes: Binding(get: { model.sleepSchedule.weekendBedtimeMinutes ?? weekend },
+                                                      set: { model.sleepSchedule.weekendBedtimeMinutes = $0 }))
+                }
             }
             Spacer()
             // the levels on the next pages follow this target, so it is set before the reading
@@ -330,9 +338,30 @@ struct FirstOpenScreen: View {
     /// Weekend targets start as a copy of the weekday ones; off = the same every night.
     private var weekendsApart: Binding<Bool> {
         Binding(get: { model.sleepSchedule.weekendBedtimeMinutes != nil }, set: { on in
-            model.sleepSchedule.weekendBedtimeMinutes = on ? model.sleepSchedule.bedtimeMinutes : nil
-            model.sleepSchedule.weekendWakeMinutes = on ? model.sleepSchedule.wakeMinutes : nil
+            withAnimation(.easeOut(duration: 0.2)) {
+                model.sleepSchedule.weekendBedtimeMinutes = on ? model.sleepSchedule.bedtimeMinutes : nil
+                model.sleepSchedule.weekendWakeMinutes = on ? model.sleepSchedule.wakeMinutes : nil
+            }
         })
+    }
+}
+
+/// A time on a small lime capsule with a moon: tap it to open the wheel.
+struct TimeChip: View {
+    let minutes: Int
+    var icon = "moon.fill"
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: icon).font(.system(size: 13, weight: .bold))
+            Text(SleepSchedule.clock(minutes)).scaledFont(16, .heavy).monospacedDigit()
+        }
+        .foregroundStyle(Jade.sleepText)
+        .padding(.leading, 10)
+        .padding(.trailing, 12)
+        .frame(minHeight: 34)
+        .background(Capsule().fill(Jade.sleepTint))
+        .contentShape(Capsule())
     }
 }
 

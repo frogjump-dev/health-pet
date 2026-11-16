@@ -17,7 +17,14 @@ struct HomeScreen: View {
 
     private var stage: PetStage { PetStage.shared }
     @State private var line: String?
+    /// The line's small icon (a moon, a workout) and whether the pet says it in its sleep.
+    @State private var lineIcon: BubbleIcon?
+    @State private var lineAsleep = false
+    /// Where the line is on the stage: the food bubbles under it step back while it is said.
+    @State private var lineFrame: CGRect = .null
     @State private var lineTask: Task<Void, Never>?
+    /// The pet switcher or the 「…」 card, popped up under its button.
+    @State private var pop: HomePop?
     @State private var momentsTask: Task<Void, Never>?
     @State private var bites = 0
     @State private var onScreen = false
@@ -97,6 +104,7 @@ struct HomeScreen: View {
         .coordinateSpace(name: HomeSpot.space)
         .onPreferenceChange(HomeSpot.Key.self) { spots = $0 }
         .overlay { FeedLayer(feeds: feeds) }
+        .overlay(alignment: .topLeading) { popOverlay }
         .overlay { tourOverlay }
         .overlay {
             if let gift {
@@ -119,6 +127,7 @@ struct HomeScreen: View {
         }
         .onDisappear {
             onScreen = false
+            pop = nil
             if tour == .tryIt { tour = nil }
             waitForData(false)
         }
@@ -132,7 +141,8 @@ struct HomeScreen: View {
         .onChange(of: tour) { _, step in if step == nil { greet() } }
         .onChange(of: stage.tapCount) {
             guard onScreen else { return }
-            say(stage.lastTapMode == "awake" ? model.petLine(energy: energy) : "Mm… so sleepy.")
+            let awake = stage.lastTapMode == "awake"
+            say(awake ? model.petLine(energy: energy) : "Mm… so sleepy.", asleep: !awake)
         }
         // 拜托: the pet's one question about notifications
         .onChange(of: askingBedtime) { _, asking in if asking { stage.react("please") } }
@@ -151,17 +161,8 @@ struct HomeScreen: View {
 
     private func topBar(_ pet: Pet3D) -> some View {
         HStack {
-            Menu {
-                Picker("Main pet", selection: Binding(get: { model.mainPetID }, set: {
-                    model.mainPetID = $0
-                    // 点点头: the new main pet nods once it is on the stage
-                    stage.react("nod", pet: model.mainPet3D.id)
-                })) {
-                    ForEach(model.unlockedPets) { p in
-                        Text(p.name).tag(p.rosterID)
-                    }
-                }
-            } label: {
+            // the pet switcher: a small card of the pets met so far (bubble-settings-v1)
+            Button { togglePop(.pets) } label: {
                 HStack(spacing: 6) {
                     Text(pet.name)
                         .scaledFont(28, .bold)
@@ -169,20 +170,81 @@ struct HomeScreen: View {
                     Image(systemName: "chevron.down")
                         .font(.system(size: 13, weight: .bold))
                         .foregroundStyle(Jade.ink2)
+                        .rotationEffect(.degrees(pop == .pets ? 180 : 0))
                 }
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
+            .background(HomeSpot.mark("name"))
             .accessibilityLabel("Main pet: \(pet.name)")
+            .accessibilityHint("Shows your pets to pick from")
             Spacer()
             // No feature, no entry (PRD v0.2): Settings, and the tour again (v3.4).
-            Menu {
-                Button { router.path.append(.settings) } label: { Label("Settings", systemImage: "gearshape") }
-                Button { startTour() } label: { Label("Show me around", systemImage: "hand.tap") }
-            } label: {
-                RoundIcon(systemName: "ellipsis")
+            Button { togglePop(.more) } label: { RoundIcon(systemName: "ellipsis") }
+                .buttonStyle(.plain)
+                .opacity(tour == nil || tour == .tryIt ? 1 : 0)
+                .background(HomeSpot.mark("more"))
+                .accessibilityLabel("More")
+        }
+    }
+
+    private enum HomePop { case pets, more }
+
+    private func togglePop(_ which: HomePop) {
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.72)) { pop = pop == which ? nil : which }
+    }
+
+    private func closePop() {
+        withAnimation(.easeOut(duration: 0.18)) { pop = nil }
+    }
+
+    /// The two pop-up cards: under the pet's name (the pets met so far) and under 「…」.
+    private var popOverlay: some View {
+        let top = (spots["name"]?.maxY ?? 52) + 6
+        return ZStack(alignment: .topLeading) {
+            if pop != nil {
+                Color.clear
+                    .contentShape(Rectangle())
+                    .ignoresSafeArea()
+                    .onTapGesture { closePop() }
+                    .accessibilityHidden(true)
             }
-            .opacity(tour == nil || tour == .tryIt ? 1 : 0)
-            .background(HomeSpot.mark("more"))
-            .accessibilityLabel("More")
+            VStack(spacing: 0) {
+                Color.clear.frame(height: top)
+                if pop == .pets {
+                    PetSwitcher(pets: model.unlockedPets, current: model.mainPet3D.id,
+                                level: { model.record($0).level }, outfit: { model.dressUp.outfit(for: $0.id) }) { pet in
+                        closePop()
+                        guard pet.id != model.mainPet3D.id else { return }
+                        model.mainPetID = pet.rosterID
+                        // 点点头: the new main pet nods once it is on the stage
+                        stage.react("nod", pet: pet.id)
+                    }
+                    .popIn(from: .top)
+                }
+            }
+            .padding(.horizontal, 12)
+            VStack(alignment: .trailing, spacing: 0) {
+                Color.clear.frame(width: 1, height: top)
+                if pop == .more {
+                    VStack(spacing: 0) {
+                        PopMenuRow(icon: "gearshape", title: "Settings", chevron: true) {
+                            closePop()
+                            router.path.append(.settings)
+                        }
+                        PopDivider()
+                        PopMenuRow(icon: "hand.tap", title: "Show me around") {
+                            closePop()
+                            startTour()
+                        }
+                    }
+                    .frame(width: 236)
+                    .popCard()
+                    .popIn(from: .topTrailing)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .trailing)
+            .padding(.trailing, 18)
         }
     }
 
@@ -200,24 +262,37 @@ struct HomeScreen: View {
                     .frame(width: size.width, height: size.height)
                     .accessibilityLabel("\(pet.name). Tap, tap again, or hold.")
 
+                // B 轻泡串: the beads end just above the pet (or its hat)
                 if askingBedtime {
-                    BedtimeQuestion(sure: { answerBedtime(true) }, notNow: { answerBedtime(false) })
-                        .frame(maxWidth: size.width * 0.8)
-                        .position(x: size.width / 2, y: max(48, layout.headTop - 56))
-                        .transition(.scale(scale: 0.85, anchor: .bottom).combined(with: .opacity))
+                    PetBubble(text: "Want me to yawn at you 30 minutes before bed?",
+                              question: .init(no: "Not now", yes: "Sure",
+                                              onNo: { answerBedtime(false) }, onYes: { answerBedtime(true) }))
+                        .frame(maxWidth: min(300, size.width * 0.8))
+                        .frame(width: size.width, height: max(130, layout.headTop - 2), alignment: .bottom)
+                        .transition(.asymmetric(insertion: .identity, removal: .scale(scale: 0.35, anchor: .bottom).combined(with: .opacity)))
                 } else if let line {
-                    SpeechBubble(text: line)
+                    PetBubble(text: line, icon: lineIcon, asleep: lineAsleep)
+                        .id(line)
                         .frame(maxWidth: size.width * 0.7)
-                        .position(x: size.width / 2, y: max(26, layout.headTop - 34))
-                        .transition(.scale(scale: 0.85, anchor: .bottom).combined(with: .opacity))
+                        .background(GeometryReader { g in
+                            Color.clear.preference(key: LineFrameKey.self, value: g.frame(in: .named(Self.stageSpace)))
+                        })
+                        .frame(width: size.width, height: max(90, layout.headTop - 2), alignment: .bottom)
                         .allowsHitTesting(false)
+                        .transition(.asymmetric(insertion: .identity, removal: .scale(scale: 0.35, anchor: .bottom).combined(with: .opacity)))
                 }
 
                 ForEach(Array(bubbles.enumerated()), id: \.element.id) { index, bubble in
+                    // the bubbles next to the pet's line step back while it is said
+                    let hushed = line != nil && eating[bubble.id] == nil
+                        && lineFrame.insetBy(dx: -35, dy: -35).contains(layout.slot(bubble.slot))
                     Button { harvest(bubble, layout: layout) } label: {
                         FoodBubbleView(bubble: bubble, phase: index, eaten: eating[bubble.id] != nil)
                     }
                     .buttonStyle(BubblePress())
+                    .opacity(hushed ? 0.15 : 1)
+                    .scaleEffect(hushed ? 0.9 : 1)
+                    .animation(.easeOut(duration: 0.2), value: hushed)
                     .disabled(eating[bubble.id] != nil || (tour != nil && tour != .tryIt))
                     .position(layout.slot(bubble.slot))
                     .transition(.asymmetric(insertion: .scale(scale: 0.3).combined(with: .opacity),
@@ -232,8 +307,12 @@ struct HomeScreen: View {
                 }
             }
             .animation(.spring(duration: 0.45, bounce: 0.35), value: bubbles.map(\.id))
+            .coordinateSpace(name: Self.stageSpace)
+            .onPreferenceChange(LineFrameKey.self) { lineFrame = $0 }
         }
     }
+
+    private static let stageSpace = "homeStage"
 
     private func stageConfig(pet: Pet3D, box: PetStageConfig.Box) -> PetStageConfig {
         // No mood from the health data (PRD v0.3): how the pet idles follows its energy, and today's
@@ -330,7 +409,7 @@ struct HomeScreen: View {
         cell.play(after: 0.3, gain: gain)
         bites += 1
         lastBite = Date()
-        if let tag = feedback.tag { say(tag) }
+        if let tag = feedback.tag { say(tag, icon: BubbleIcon.of(feedback.kind)) }
         inFlight += 1
         Task { @MainActor in
             try? await Task.sleep(for: .seconds(1.6))
@@ -758,9 +837,12 @@ struct HomeScreen: View {
         }
     }
 
-    private func say(_ text: String) {
+    /// The pet says a line (B 轻泡串): 3 s, 4.5 s when it is long. A data line gets its icon.
+    private func say(_ text: String, icon: BubbleIcon? = nil, asleep: Bool = false) {
         guard feeds.isEmpty else { return }   // a harvest's tag has that place
         lineTask?.cancel()
+        lineIcon = icon ?? BubbleIcon.guess(text)
+        lineAsleep = asleep || model.isPetAsleep
         withAnimation(.spring(duration: 0.3)) { line = text }
         lineTask = Task {
             try? await Task.sleep(for: .seconds(text.count > 40 ? 4.5 : 3))
@@ -816,10 +898,20 @@ struct HomeScreen: View {
     /// -hp3dFeed all (or a bubble kind: workout, steps, night, load) eats the bubbles one by one;
     /// -hp3dTour 1|2|3|tryit shows that tour step; -hp3dNote asleep|slept|week|day opens that note;
     /// -hp3dAskBedtime YES shows the pet's one question about the bedtime reminder;
-    /// -hp3dReact <expression> plays it after 3 s (wait and gift are let go 4 s later).
+    /// -hp3dReact <expression> plays it after 3 s (wait and gift are let go 4 s later);
+    /// -hp3dSay <line> has the pet say it after 3 s and keeps it up; -hp3dPop pets|more opens that card.
     private func debugLaunch() async {
         guard stage.isReady else { return }
         let defaults = UserDefaults.standard
+        if let text = defaults.string(forKey: "hp3dSay") {
+            try? await Task.sleep(for: .seconds(3))
+            say(text)
+            lineTask?.cancel()
+        }
+        if let which = defaults.string(forKey: "hp3dPop") {
+            try? await Task.sleep(for: .seconds(2))
+            togglePop(which == "more" ? .more : .pets)
+        }
         if let id = defaults.string(forKey: "hp3dReact") {
             try? await Task.sleep(for: .seconds(3))
             let hold = id == "wait" || id == "gift"
@@ -1047,57 +1139,75 @@ private struct BubblePress: ButtonStyle {
     }
 }
 
-/// The pet's one question about the bedtime reminder: Sure (then the system asks) or Not now.
-private struct BedtimeQuestion: View {
-    let sure: () -> Void
-    let notNow: () -> Void
-
-    var body: some View {
-        VStack(spacing: 10) {
-            Text("Want me to yawn at you 30 minutes before bed?")
-                .scaledFont(14, .semibold)
-                .foregroundStyle(Jade.ink)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-            HStack(spacing: 8) {
-                Button("Not now", action: notNow)
-                    .buttonStyle(QuestionButton(primary: false))
-                Button("Sure", action: sure)
-                    .buttonStyle(QuestionButton(primary: true))
-            }
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(Jade.card))
-        .softShadow(1)
-    }
-
-    private struct QuestionButton: ButtonStyle {
-        let primary: Bool
-
-        func makeBody(configuration: Configuration) -> some View {
-            configuration.label
-                .scaledFont(14, .bold)
-                .foregroundStyle(primary ? Jade.onPrimary : Jade.ink)
-                .padding(.horizontal, 16)
-                .frame(minHeight: 34)
-                .background(Capsule().fill(primary ? Jade.primary : Jade.fill))
-                .opacity(configuration.isPressed ? 0.7 : 1)
-        }
+/// Where the pet's line is on the stage, for the food bubbles it covers.
+private struct LineFrameKey: PreferenceKey {
+    static let defaultValue: CGRect = .null
+    static func reduce(value: inout CGRect, nextValue: () -> CGRect) {
+        let next = nextValue()
+        if !next.isNull { value = next }
     }
 }
 
-struct SpeechBubble: View {
-    let text: String
+/// The pets met so far, four to a row: each on a small round plate with its name and level; the
+/// main pet has a jade ring and a check. More than eight scroll inside the card.
+private struct PetSwitcher: View {
+    let pets: [Pet3D]
+    let current: String
+    let level: (Pet3D) -> Int
+    let outfit: (Pet3D) -> [String]
+    let pick: (Pet3D) -> Void
 
     var body: some View {
-        Text(text)
-            .scaledFont(14, .semibold)
-            .foregroundStyle(Jade.ink)
-            .multilineTextAlignment(.center)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 9)
-            .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Jade.card))
-            .softShadow(1)
+        Group {
+            if pets.count > 8 {
+                ScrollView { grid }
+                    .scrollIndicators(.hidden)
+                    .frame(height: 290)
+            } else {
+                grid
+            }
+        }
+        .popCard()
+    }
+
+    private var grid: some View {
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 4), spacing: 2) {
+            ForEach(pets) { pet in
+                Button { pick(pet) } label: { cell(pet) }
+                    .buttonStyle(PopRowPress())
+                    .accessibilityLabel("\(pet.name), level \(level(pet))")
+                    .accessibilityAddTraits(pet.id == current ? .isSelected : [])
+            }
+        }
+        .padding(.horizontal, 4)
+        .padding(.vertical, 6)
+    }
+
+    private func cell(_ pet: Pet3D) -> some View {
+        let picked = pet.id == current
+        return VStack(spacing: 4) {
+            ZStack {
+                Circle().fill(Jade.fill).padding(3)
+                PetPicture(pet: pet, decor: outfit(pet), takesPicture: false)
+                    .frame(width: 46, height: 46)
+            }
+            .frame(width: 62, height: 62)
+            .overlay(Circle().strokeBorder(Jade.accent, lineWidth: 2.5).opacity(picked ? 1 : 0))
+            .overlay(alignment: .topTrailing) {
+                if picked { CheckBadge(size: 20).offset(x: 2, y: -2) }
+            }
+            Text(pet.name)
+                .scaledFont(12.5, .bold)
+                .foregroundStyle(Jade.ink)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+            Text("Lv \(level(pet))")
+                .scaledFont(10.5, .bold)
+                .foregroundStyle(Jade.ink2)
+        }
+        .padding(.top, 6)
+        .padding(.bottom, 8)
+        .frame(maxWidth: .infinity)
+        .contentShape(Rectangle())
     }
 }

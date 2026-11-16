@@ -1,8 +1,9 @@
 #!/bin/bash
 # Screenshots of Ovenpals (the HealthPet3D target) on the iPhone 18 Pro simulator, without opening Simulator.app.
-# Usage: HealthPet3D/tools/sim-shots.sh <simulator udid> <output folder> [all|extra]
-#   extra = only parts 4 to 7 (first-open steps, share cards, page ends, Toast's page, the tour,
-#           the tap-to-explain notes, PRD v0.3, Dress up)
+# Usage: HealthPet3D/tools/sim-shots.sh <simulator udid> <output folder> [all|extra|bubble]
+#   extra = only parts 4 to 8 (first-open steps, share cards, page ends, Toast's page, the tour,
+#           the tap-to-explain notes, PRD v0.3, Dress up, the bubble and Settings redesign)
+#   bubble = only part 8 (the pet's bubble, the pop-up cards, Settings, the time wheels, sheets)
 # Needs a Debug build in build/dd (see HealthPet3D/README.md). Shuts the simulator down at the end.
 # Each launch writes its own console-<name>.log; lines starting with [pet] say how long the
 # living pet took to load (ready / drawn) and show any page error.
@@ -153,6 +154,7 @@ for mode in light dark; do
 done
 fi
 
+if [[ "$ONLY" != bubble ]]; then
 # 4. Screens the parts above don't reach: the first open's other steps, the today and pets
 # share cards, the ends of the long pages (Settings, Memories), and Toast's page again
 xcrun simctl ui "$UDID" appearance light
@@ -262,6 +264,45 @@ sleep 4;   shot 33-dressup-dark
 launch gift-open-dark -hp3dRoute dress:toast -hp3dDressGift YES -hp3dGiftOpen YES -3d.appearance dark
 pet_ready gift-open-dark
 sleep 5;   shot 34-gift-open-dark
+fi
+
+# 8. The bubble and Settings redesign (bubble-settings-v1, decided 2026-11-16), light and dark: the
+# pet's line (B 轻泡串) plain and with a data icon, the pet switcher and 「…」 cards, Settings B from
+# top to end, Share's options card, 「Watch got it wrong?」 on the new wheel, the first open's
+# bedtime wheel and the week card's sheet
+for mode in light dark; do
+  xcrun simctl ui "$UDID" appearance "$mode"
+  launch "say-$mode" -hp3dSay "Good to see you!" -3d.appearance "$mode"
+  pet_ready "say-$mode"
+  sleep 5;   shot "40-$mode-bubble"
+  launch "say-icon-$mode" -hp3dSay "Running logged. Proud of you!" -3d.appearance "$mode"
+  pet_ready "say-icon-$mode"
+  sleep 5;   shot "41-$mode-bubble-workout"
+  launch "pop-pets-$mode" -hp3dPop pets -3d.appearance "$mode"
+  pet_ready "pop-pets-$mode"
+  sleep 4;   shot "42-$mode-pet-switcher"
+  launch "pop-more-$mode" -hp3dPop more -3d.appearance "$mode"
+  pet_ready "pop-more-$mode"
+  sleep 4;   shot "43-$mode-more"
+  launch "settings-$mode" -hp3dRoute settings -3d.appearance "$mode"
+  sleep 2;   shot "44-$mode-settings"
+  launch "settings-end-$mode" -hp3dRoute settings -hp3dScrollEnd YES -3d.appearance "$mode"
+  sleep 2;   shot "45-$mode-settings-end"
+  launch "share-options-$mode" -hp3dRoute share -hp3dShareOptions YES -3d.appearance "$mode"
+  sleep 3;   shot "46-$mode-share-options"
+  launch "fix-$mode" -hp3dRoute today -hp3dFixSheet YES -3d.appearance "$mode"
+  sleep 3;   shot "47-$mode-fix-sheet"
+done
+xcrun simctl ui "$UDID" appearance light
+launch settings-12h -hp3dRoute settings -3d.timeFormat 12 -3d.appearance light
+sleep 2;   shot 48-light-settings-12h
+launch first-open-bedtime-new -3d.onboarded NO -hp3dFirstOpenStep bedtime -3d.appearance light
+sleep 2;   shot 49-light-first-open-bedtime
+launch weekcard-new -hp3dWeekCard YES -3d.appearance light
+sleep 4;   shot 50-light-week-card
+launch asleep-say -hp3dSay "Mm… so sleepy." -hp3dMood bedtime -3d.appearance light
+pet_ready asleep-say
+sleep 5;   shot 51-light-bubble-other
 
 xcrun simctl terminate "$UDID" "$BUNDLE" >/dev/null 2>&1
 wait   # the last launch's console

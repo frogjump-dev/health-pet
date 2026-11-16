@@ -38,6 +38,14 @@ enum Jade {
     /// Text on `accent` (the today circle, check badges).
     static let onAccent = dynamic(0xF8F6F3, 0x121611)
     static let shadow = Color.black
+    /// The round knob of the app's own switch (white by day, the day canvas at night).
+    static let knob = dynamic(0xFFFFFF, 0xEBE9E3)
+    /// The time wheel's selection band: a light lime wash (22% by day, 16% at night).
+    static let sleepTint = Color(UIColor { $0.userInterfaceStyle == .dark
+        ? UIColor(hex: 0xD9D387).withAlphaComponent(0.16) : UIColor(hex: 0xBDB65A).withAlphaComponent(0.22) })
+    /// The lift under a pop-up card (the pet switcher, 「…」, Share's options).
+    static let popShadow = Color(UIColor { $0.userInterfaceStyle == .dark
+        ? UIColor.black.withAlphaComponent(0.5) : UIColor(hex: 0x14281E).withAlphaComponent(0.16) })
 
     /// The same colours as hex, for the pet's web view (floor and shadow tints).
     static func canvasHex(dark: Bool) -> String { dark ? "#121611" : "#EBE9E3" }
