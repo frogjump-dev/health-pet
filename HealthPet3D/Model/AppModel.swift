@@ -56,6 +56,8 @@ final class AppModel {
     /// The pet's slow condition from the last 7 days (PRD v0.2 §5.5).
     private(set) var energy: PetEnergy = .normal
     private(set) var isLoading = false
+    /// The last time a refresh brought days in (Settings: 「Read at 21:02」).
+    private(set) var lastReadAt: Date?
     private(set) var whoopStatus: WhoopStatus
     /// HealthKit never reveals whether read access was granted, so this only records that
     /// the user went through the permission sheet.
@@ -282,6 +284,7 @@ final class AppModel {
         recentDays = days
         recentMode = dataMode
         if dataMode == .live && !merged.isEmpty { store.cache(merged) }
+        if !merged.isEmpty { lastReadAt = now }
         evaluate(days, now: now, recordMemories: !merged.isEmpty)
         // Only complain when nothing worked; a single failing source just falls back to the others.
         errorMessage = merged.isEmpty ? failures.first?.localizedDescription : nil

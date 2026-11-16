@@ -192,6 +192,21 @@ enum Format {
         return String(format: "%d:%02d %@", hour % 12 == 0 ? 12 : hour % 12, minute, hour < 12 ? "AM" : "PM")
     }
 
+    /// A target as a big number and its period: 1380 → ("23:00", nil) or ("11:00", "PM").
+    static func timeParts(minutes: Int) -> (clock: String, period: String?) {
+        let m = ((minutes % 1440) + 1440) % 1440
+        let (hour, minute) = (m / 60, m % 60)
+        guard ClockStyle.shared.twelveHour else { return (String(format: "%02d:%02d", hour, minute), nil) }
+        return (String(format: "%d:%02d", hour % 12 == 0 ? 12 : hour % 12, minute), hour < 12 ? "AM" : "PM")
+    }
+
+    /// The night bar's hour marks: "00:00", or "12 AM" with the 12-hour clock.
+    static func hourMark(minutes: Int) -> String {
+        let hour = (((minutes % 1440) + 1440) % 1440) / 60
+        guard ClockStyle.shared.twelveHour else { return String(format: "%02d:00", hour) }
+        return "\(hour % 12 == 0 ? 12 : hour % 12) \(hour < 12 ? "AM" : "PM")"
+    }
+
     private static func formatter(_ format: String) -> DateFormatter {
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")

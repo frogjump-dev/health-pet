@@ -1,10 +1,12 @@
-import Foundation
+import UIKit
 import UserNotifications
 
 /// The only two notifications (PRD v0.2), both opt-in and each at most once a day:
 /// 30 minutes before the bedtime target, the pet is getting sleepy; at the wake-up target,
 /// last night's result is waiting (the morning reveal happens when the app opens).
 /// Weekend targets apply to Friday and Saturday nights and to Saturday and Sunday mornings.
+/// Each carries a small picture of the main pet on a card-coloured square (bubble-settings-v1),
+/// its ^^ face in the morning.
 @MainActor
 enum PetNotifications {
     private static let bedtimePrefix = "hp3d.bedtime."
@@ -16,11 +18,14 @@ enum PetNotifications {
     }
 
     /// Replaces every pending reminder with what the settings say now.
-    static func reschedule(bedtime: Bool, morning: Bool, schedule: SleepSchedule, petName: String) {
+    static func reschedule(bedtime: Bool, morning: Bool, schedule: SleepSchedule, pet: Pet3D) {
         let center = UNUserNotificationCenter.current()
         let ids = (1...7).flatMap { ["\(bedtimePrefix)\($0)", "\(morningPrefix)\($0)"] }
         center.removePendingNotificationRequests(withIdentifiers: ids)
         guard bedtime || morning else { return }
+        let petName = pet.name
+        let sleepy = bedtime ? picture(pet.still) : nil
+        let happy = morning ? picture(pet.happyStill) : nil
 
         let calendar = Calendar(identifier: .gregorian)
         // One request per weekday the night ends on (1 = Sunday … 7 = Saturday), repeating weekly.
@@ -41,6 +46,7 @@ enum PetNotifications {
                 content.title = "\(petName) is getting sleepy"
                 content.body = "Bedtime in 30 minutes."
                 content.sound = .default
+                content.attachments = attachment(sleepy, id: "\(bedtimePrefix)\(weekday)")
                 add(center, id: "\(bedtimePrefix)\(weekday)", content: content,
                     when: DateComponents(calendar: calendar, hour: minutes / 60, minute: minutes % 60, weekday: day))
             }
@@ -48,10 +54,35 @@ enum PetNotifications {
                 let content = UNMutableNotificationContent()
                 content.title = "\(petName) is awake"
                 content.body = "See how last night went."
+                content.attachments = attachment(happy, id: "\(morningPrefix)\(weekday)")
                 add(center, id: "\(morningPrefix)\(weekday)", content: content,
                     when: DateComponents(calendar: calendar, hour: wake / 60, minute: wake % 60, weekday: weekday))
             }
         }
+    }
+
+    /// The pet's still on a rounded card-coloured square, as PNG data.
+    private static func picture(_ name: String) -> Data? {
+        guard let still = UIImage(named: name) else { return nil }
+        let side: CGFloat = 240
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        let image = UIGraphicsImageRenderer(size: CGSize(width: side, height: side), format: format).image { _ in
+            UIColor(hex: 0xF8F6F3).setFill()
+            UIBezierPath(roundedRect: CGRect(x: 0, y: 0, width: side, height: side), cornerRadius: side * 0.22).fill()
+            let inset = side * 0.12
+            still.draw(in: CGRect(x: inset, y: inset, width: side - inset * 2, height: side - inset * 2))
+        }
+        return image.pngData()
+    }
+
+    /// The system moves an attachment's file into its own store, so every request gets a copy.
+    private static func attachment(_ data: Data?, id: String) -> [UNNotificationAttachment] {
+        guard let data else { return [] }
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(id).png")
+        guard (try? data.write(to: url, options: .atomic)) != nil,
+              let attachment = try? UNNotificationAttachment(identifier: "pet", url: url, options: nil) else { return [] }
+        return [attachment]
     }
 
     private static func add(_ center: UNUserNotificationCenter, id: String, content: UNNotificationContent, when: DateComponents) {

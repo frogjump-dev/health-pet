@@ -1,9 +1,9 @@
 import SwiftUI
 import PetCore
 
-/// Share: swipe between cards (This week · Today · My pets); the options button holds the two
-/// privacy switches; Card or 9:16 (a story picture) under the dots; one Share button (the system
-/// sheet has Save Image).
+/// Share: swipe between cards (This week · Today · My pets); the options button pops a small card
+/// with the two privacy switches (the app's own 小脸开关); Card or 9:16 (a story picture) under the
+/// dots; one Share button (the system sheet has Save Image).
 /// Card v2 (PRD v0.2 §6, decided 2026-11-08): the reader is someone else, so a card has an
 /// identity title and one plain line; the biggest number is every 自律周 so far.
 struct ShareScreen: View {
@@ -29,17 +29,21 @@ struct ShareScreen: View {
     /// The toy camera clicks once, when the first picture is ready (PRD v0.3 §8.4); swiping
     /// between cards is silent.
     @State private var clicked = false
+    /// The options card is open. (Simulator screenshots: -hp3dShareOptions YES opens it.)
+    #if DEBUG
+    @State private var options = UserDefaults.standard.bool(forKey: "hp3dShareOptions")
+    #else
+    @State private var options = false
+    #endif
 
     var body: some View {
         let facts = ShareCard.Facts(model: model, home: home, showNumbers: showNumbers, showBedtimes: showBedtimes)
         VStack(alignment: .leading, spacing: 0) {
             PageHeader(title: "Share") {
-                Menu {
-                    Toggle("Show exact numbers", isOn: $showNumbers)
-                    Toggle("Show bedtimes", isOn: $showBedtimes)
-                } label: {
+                Button { setOptions(!options) } label: {
                     RoundIcon(systemName: "slider.horizontal.3")
                 }
+                .buttonStyle(.plain)
                 .accessibilityLabel("Options")
             }
             .padding(.horizontal, Metrics.gutter)
@@ -71,8 +75,25 @@ struct ShareScreen: View {
                 .padding(.bottom, 12)
         }
         .padding(.top, 8)
+        .overlay(alignment: .topTrailing) {
+            if options {
+                ZStack(alignment: .topTrailing) {
+                    // a tap anywhere else closes it
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .onTapGesture { setOptions(false) }
+                        .accessibilityHidden(true)
+                    ShareOptions(numbers: $showNumbers, bedtimes: $showBedtimes)
+                        .frame(width: 262)
+                        .padding(.top, 56)
+                        .padding(.trailing, Metrics.gutter - 2)
+                        .popIn(from: .topTrailing)
+                }
+            }
+        }
         .background(Jade.canvas.ignoresSafeArea())
         .toolbar(.hidden, for: .navigationBar)
+        .onDisappear { options = false }
         .task(id: "\(page.rawValue)-\(showNumbers)-\(showBedtimes)-\(story)-\(scheme == .dark)") {
             let card = ShareCard(kind: page, facts: facts)
             // dressed pets go on the picture in what they wear (PRD v0.3 §5.4): their pictures first
@@ -85,6 +106,31 @@ struct ShareScreen: View {
                 Cues.photo.play()
             }
         }
+    }
+
+    private func setOptions(_ open: Bool) {
+        withAnimation(open ? .spring(response: 0.32, dampingFraction: 0.72) : .easeOut(duration: 0.15)) { options = open }
+    }
+}
+
+/// The options card under the options button: exact numbers, bedtimes.
+private struct ShareOptions: View {
+    @Binding var numbers: Bool
+    @Binding var bedtimes: Bool
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Toggle(isOn: $numbers) { Text("Exact numbers").scaledFont(16, .semibold).foregroundStyle(Jade.ink) }
+                .toggleStyle(.face)
+                .padding(.horizontal, 12)
+                .frame(minHeight: 54)
+            PopDivider()
+            Toggle(isOn: $bedtimes) { Text("Bedtimes").scaledFont(16, .semibold).foregroundStyle(Jade.ink) }
+                .toggleStyle(.face)
+                .padding(.horizontal, 12)
+                .frame(minHeight: 54)
+        }
+        .popCard()
     }
 }
 
@@ -106,7 +152,7 @@ struct WeekAchievedSheet: View {
         VStack(spacing: 10) {
             ShareCard(kind: .week, facts: facts)
                 .frame(width: ShareCard.exportWidth)
-                .padding(.top, 20)
+                .padding(.top, 8)
             ShareCardButton(image: image)
                 .frame(width: ShareCard.exportWidth)
                 .padding(.top, 4)
@@ -115,12 +161,13 @@ struct WeekAchievedSheet: View {
                 .foregroundStyle(Jade.ink2)
                 .frame(height: 36)
         }
-        .frame(maxWidth: .infinity)
         .padding(.bottom, 12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(Jade.canvas.ignoresSafeArea())
-        .presentationDetents([.height(ShareCard.height + 150)])
-        .presentationDragIndicator(.visible)
-        .presentationCornerRadius(32)
+        .presentationDetents([.height(ShareCard.height + 158)])
+        // the card is card-coloured, so it sits on the canvas; the sheet's handle and corners
+        // are the app's own
+        .jadeSheet()
         .task(id: scheme == .dark) {
             let card = ShareCard(kind: .week, facts: facts)
             await PetSnapper.shared.prepare(card.pictures)

@@ -54,7 +54,7 @@ struct HealthPet3DApp: App {
 
     private func rescheduleNotifications() {
         PetNotifications.reschedule(bedtime: home.notifyBedtime, morning: home.notifyMorning,
-                                    schedule: model.sleepSchedule, petName: model.mainPet3D.name)
+                                    schedule: model.sleepSchedule, pet: model.mainPet3D)
     }
 }
 

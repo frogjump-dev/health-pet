@@ -296,39 +296,37 @@ struct TodayScreen: View {
 private struct SleepFixSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
-    @State private var picked: Date
-    private let clock = ClockStyle.shared
+    /// The picked hour and minute, in minutes after midnight.
+    @State private var minutes: Int
 
-    init(start: Date) { _picked = State(initialValue: start) }
-
-    /// The picked hour and minute, as last night (evening times on the day before).
-    private var moment: Date {
-        let parts = Calendar.current.dateComponents([.hour, .minute], from: picked)
-        return model.lastNightMoment(minutes: (parts.hour ?? 0) * 60 + (parts.minute ?? 0))
+    init(start: Date) {
+        let parts = Calendar.current.dateComponents([.hour, .minute], from: start)
+        _minutes = State(initialValue: (parts.hour ?? 23) * 60 + (parts.minute ?? 0))
     }
+
+    /// The picked time, as last night (evening times on the day before).
+    private var moment: Date { model.lastNightMoment(minutes: minutes) }
 
     var body: some View {
         let counts = moment <= model.lastNightDeadline
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 Text("When did you fall asleep?")
-                    .scaledFont(20, .bold)
+                    .scaledFont(20, .heavy)
                     .foregroundStyle(Jade.ink)
                 Text(model.lastNightRecordedOnset.map { "Your watch saw \(Format.time($0)). This only changes whether last night counts as an early night." }
                      ?? "Your watch didn’t see you fall asleep. This only changes whether last night counts as an early night.")
                     .scaledFont(14, .medium)
                     .foregroundStyle(Jade.ink2)
                     .fixedSize(horizontal: false, vertical: true)
-                DatePicker("Asleep at", selection: $picked, displayedComponents: .hourAndMinute)
-                    .datePickerStyle(.wheel)
-                    .labelsHidden()
-                    // the wheel follows the clock chosen in Settings, not just the phone's
-                    .environment(\.locale, Locale(identifier: clock.twelveHour ? "en_US" : "en_GB"))
-                    .frame(maxWidth: .infinity)
+                // the app's own wheel, in the clock chosen in Settings; its band turns grey while
+                // the time wouldn't count
+                ClockWheel(minutes: $minutes, counts: counts)
                 Text(counts ? "That counts as an early night." : "Still after \(Format.time(model.lastNightDeadline)), so it wouldn’t count.")
                     .scaledFont(14, .semibold)
                     .foregroundStyle(counts ? Jade.ink : Jade.ink2)
                     .frame(maxWidth: .infinity)
+                    .animation(.easeOut(duration: 0.15), value: counts)
                 Button("Save") {
                     model.fixLastNight(moment)
                     PetStage.shared.react("nod")
@@ -336,20 +334,21 @@ private struct SleepFixSheet: View {
                 }
                 .buttonStyle(PillButtonStyle(primary: true))
                 .disabled(!counts)
-                .opacity(counts ? 1 : 0.55)
+                .opacity(counts ? 1 : 0.45)
+                .animation(.easeOut(duration: 0.15), value: counts)
                 Text("\(model.sleepFixesLeft) of \(AppModel.sleepFixesPerMonth) left this month, apart from your leave night.")
                     .scaledFont(12, .medium)
                     .foregroundStyle(Jade.ink2)
                     .frame(maxWidth: .infinity)
                     .multilineTextAlignment(.center)
             }
-            .padding(.horizontal, Metrics.gutter)
-            .padding(.top, 26)
+            .padding(.horizontal, Metrics.gutter + 4)
+            .padding(.top, 6)
             .padding(.bottom, 12)
         }
-        .presentationDetents([.medium, .large])
-        .presentationDragIndicator(.visible)
-        .presentationBackground(Jade.canvas)
+        .scrollBounceBehavior(.basedOnSize)
+        .presentationDetents([.height(440), .large])
+        .jadeSheet()
     }
 }
 
