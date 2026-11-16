@@ -38,6 +38,9 @@ enum Jade {
     /// Text on `accent` (the today circle, check badges).
     static let onAccent = dynamic(0xF8F6F3, 0x121611)
     static let shadow = Color.black
+    /// The app's own switch when off: the grey fill by day, a lighter grey at night so the track
+    /// still shows on the night card.
+    static let switchOff = dynamic(0xE2DFD7, 0x434D40)
     /// The round knob of the app's own switch (white by day, the day canvas at night).
     static let knob = dynamic(0xFFFFFF, 0xEBE9E3)
     /// The time wheel's selection band: a light lime wash (22% by day, 16% at night).

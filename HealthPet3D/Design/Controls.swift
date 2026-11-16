@@ -29,7 +29,7 @@ extension ToggleStyle where Self == FaceToggleStyle {
     static var face: FaceToggleStyle { FaceToggleStyle() }
 }
 
-/// The switch itself, 50 × 30: jade when on, the grey fill when off.
+/// The switch itself, 50 × 30: jade when on, grey when off.
 struct FaceSwitch: View {
     let isOn: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -41,7 +41,7 @@ struct FaceSwitch: View {
 
     var body: some View {
         Capsule()
-            .fill(isOn ? Jade.accent : Jade.fill)
+            .fill(isOn ? Jade.accent : Jade.switchOff)
             .frame(width: 50, height: 30)
             .overlay(alignment: isOn ? .trailing : .leading) {
                 knob.padding(3)
@@ -51,7 +51,8 @@ struct FaceSwitch: View {
     }
 
     private var knob: some View {
-        ZStack {
+        let still = reduceMotion
+        return ZStack {
             Circle().fill(Jade.knob).shadow(color: .black.opacity(0.18), radius: 1.5, y: 1)
             HStack(spacing: 5) {
                 eye
@@ -60,7 +61,7 @@ struct FaceSwitch: View {
         }
         .frame(width: 24, height: 24)
         .keyframeAnimator(initialValue: Squish(), trigger: isOn) { view, s in
-            view.scaleEffect(x: reduceMotion ? 1 : s.x, y: reduceMotion ? 1 : s.y)
+            view.scaleEffect(x: still ? 1 : s.x, y: still ? 1 : s.y)
         } keyframes: { _ in
             KeyframeTrack(\.x) {
                 LinearKeyframe(1, duration: 0.05)

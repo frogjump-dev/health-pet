@@ -429,6 +429,8 @@ private struct NightBar: View {
             .foregroundStyle(Jade.sleepText)
             .frame(width: size, height: size)
             .background(Circle().fill(Jade.card).shadow(color: .black.opacity(0.2), radius: 3, y: 2))
+            // a lime ring: a card-coloured knob would vanish into the night card
+            .overlay(Circle().strokeBorder(Jade.sleep, lineWidth: 1.5))
             .scaleEffect(held == target ? 1.12 : 1)
             .animation(.spring(response: 0.25, dampingFraction: 0.6), value: held == target)
             // a finger is wider than the knob
@@ -627,9 +629,10 @@ private struct AppearanceThumb: View {
                 ZStack(alignment: .topTrailing) {
                     switch appearance {
                     case .system:
+                        // the night one whole, the day one over its upper half: no seam between them
                         ZStack {
+                            MiniScreen(dark: true, still: still)
                             MiniScreen(dark: false, still: still).clipShape(HalfCut(upper: true))
-                            MiniScreen(dark: true, still: still).clipShape(HalfCut(upper: false))
                         }
                     case .light: MiniScreen(dark: false, still: still)
                     case .dark: MiniScreen(dark: true, still: still)
@@ -739,11 +742,12 @@ private struct NoteHop: View {
     }
 
     var body: some View {
+        let still = reduceMotion
         Text("♪")
             .font(.rounded(15, .black))
             .foregroundStyle(Jade.accent)
             .keyframeAnimator(initialValue: Hop(), trigger: trigger) { view, hop in
-                view.offset(y: reduceMotion ? 0 : hop.y).opacity(hop.opacity)
+                view.offset(y: still ? 0 : hop.y).opacity(hop.opacity)
             } keyframes: { _ in
                 KeyframeTrack(\.y) {
                     LinearKeyframe(0, duration: 0.01)
@@ -769,6 +773,7 @@ private struct AboutFooter: View {
                 .resizable()
                 .frame(width: 54, height: 54)
                 .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 13, style: .continuous).strokeBorder(Jade.fill, lineWidth: 1))
                 .softShadow(0.8)
                 .accessibilityHidden(true)
             Text(Bundle.main.displayName).scaledFont(15, .heavy).foregroundStyle(Jade.ink)

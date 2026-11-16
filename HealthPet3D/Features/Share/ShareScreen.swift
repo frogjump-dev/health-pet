@@ -161,8 +161,8 @@ struct WeekAchievedSheet: View {
                 .foregroundStyle(Jade.ink2)
                 .frame(height: 36)
         }
-        .frame(maxWidth: .infinity)
         .padding(.bottom, 12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(Jade.canvas.ignoresSafeArea())
         .presentationDetents([.height(ShareCard.height + 158)])
         // the card is card-coloured, so it sits on the canvas; the sheet's handle and corners

@@ -347,7 +347,7 @@ private struct SleepFixSheet: View {
             .padding(.bottom, 12)
         }
         .scrollBounceBehavior(.basedOnSize)
-        .presentationDetents([.height(560), .large])
+        .presentationDetents([.height(440), .large])
         .jadeSheet()
     }
 }

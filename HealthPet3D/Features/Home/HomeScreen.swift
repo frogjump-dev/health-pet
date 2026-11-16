@@ -270,6 +270,7 @@ struct HomeScreen: View {
                         .frame(maxWidth: min(300, size.width * 0.8))
                         .frame(width: size.width, height: max(130, layout.headTop - 2), alignment: .bottom)
                         .transition(.asymmetric(insertion: .identity, removal: .scale(scale: 0.35, anchor: .bottom).combined(with: .opacity)))
+                        .zIndex(1)
                 } else if let line {
                     PetBubble(text: line, icon: lineIcon, asleep: lineAsleep)
                         .id(line)
@@ -280,6 +281,8 @@ struct HomeScreen: View {
                         .frame(width: size.width, height: max(90, layout.headTop - 2), alignment: .bottom)
                         .allowsHitTesting(false)
                         .transition(.asymmetric(insertion: .identity, removal: .scale(scale: 0.35, anchor: .bottom).combined(with: .opacity)))
+                        // over the food bubbles it covers (they step back meanwhile)
+                        .zIndex(1)
                 }
 
                 ForEach(Array(bubbles.enumerated()), id: \.element.id) { index, bubble in
@@ -1149,7 +1152,8 @@ private struct LineFrameKey: PreferenceKey {
 }
 
 /// The pets met so far, four to a row: each on a small round plate with its name and level; the
-/// main pet has a jade ring and a check. More than eight scroll inside the card.
+/// main pet has a jade ring and a check. Up to twelve show whole; more scroll inside the card,
+/// the next row peeking under a fade.
 private struct PetSwitcher: View {
     let pets: [Pet3D]
     let current: String
@@ -1159,10 +1163,12 @@ private struct PetSwitcher: View {
 
     var body: some View {
         Group {
-            if pets.count > 8 {
+            if pets.count > 12 {
                 ScrollView { grid }
                     .scrollIndicators(.hidden)
-                    .frame(height: 290)
+                    .frame(height: 400)
+                    .mask(LinearGradient(stops: [.init(color: .black, location: 0.82), .init(color: .black.opacity(0.25), location: 1)],
+                                         startPoint: .top, endPoint: .bottom))
             } else {
                 grid
             }
@@ -1188,7 +1194,7 @@ private struct PetSwitcher: View {
         return VStack(spacing: 4) {
             ZStack {
                 Circle().fill(Jade.fill).padding(3)
-                PetPicture(pet: pet, decor: outfit(pet), takesPicture: false)
+                PetPicture(pet: pet, decor: outfit(pet))
                     .frame(width: 46, height: 46)
             }
             .frame(width: 62, height: 62)
